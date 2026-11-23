@@ -2031,11 +2031,11 @@ checksum = "b93853da6d84c2e3c7d730d6473e8817692dd89be387eb01b94d7f108ecb5b8c"
 
 [[package]]
 name = "nrcon"
-version = "0.3.0"
+version = "0.4.0"
 
 [[package]]
 name = "nro"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "nro-core",
  "png 0.17.16",
@@ -2048,7 +2048,7 @@ dependencies = [
 
 [[package]]
 name = "nro-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2057,7 +2057,7 @@ dependencies = [
 
 [[package]]
 name = "nro-mcp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "nro",
  "nro-core",
@@ -2067,7 +2067,7 @@ dependencies = [
 
 [[package]]
 name = "nrpvp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "from-singleton",
  "serde",
@@ -2080,7 +2080,7 @@ dependencies = [
 
 [[package]]
 name = "nrpvp-app"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "aes",
  "cbc",
@@ -2100,7 +2100,7 @@ dependencies = [
 
 [[package]]
 name = "nrpvp-launcher"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "reqwest 0.12.28",
  "semver",

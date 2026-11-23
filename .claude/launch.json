@@ -6,6 +6,12 @@
       "runtimeExecutable": "C:\\Users\\Leonardo\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
       "runtimeArgs": ["-I", "-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", "crates/nrpvp-app/ui"],
       "port": 8765
+    },
+    {
+      "name": "download-page",
+      "runtimeExecutable": "C:\\Users\\Leonardo\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "runtimeArgs": ["-I", "-m", "http.server", "8766", "--bind", "127.0.0.1", "--directory", "docs"],
+      "port": 8766
     }
   ]
 }
