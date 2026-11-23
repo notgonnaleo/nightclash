@@ -129,10 +129,10 @@ https://notgonnaleo.github.io/nightreign-pvp/ (no game art; the copy sells Battl
 from the GitHub API in the browser (with no release yet they fall back to "Free · Windows"). Pushes that only touch `docs/` or
 `design/` never build a release (`paths-ignore`). Preview locally: `.claude/launch.json` config `download-page`.
 
-**Legacy releases repository** `aspherya/nightreign-pvp-releases` (2026-11-13 to 2026-11-23, up to v0.3.3): launchers up to v0.3.3
-have it built in, so CI mirrors every release there until those launchers are gone (§6); their auto-update brings in a launcher
-that reads this repository. Its old page, https://aspherya.github.io/nightreign-pvp-releases/, should only redirect to the new
-one. Launchers v0.1.3 and v0.1.7 read `aspherya/nightreign-pvp`, which GitHub now redirects here [HYPOTHESIS: they follow the
+**Old releases repository** `aspherya/nightreign-pvp-releases` (2026-11-13 to 2026-11-23, up to v0.3.3) **was deleted on
+2026-11-23** [VERIFIED: API 404 with an org member's token, org lists 0 repositories], before v0.4.0 could be copied there. Launchers
+up to v0.3.3 have it built in: their update check fails, so the version gate stops them ("Could not check for updates"). Those
+players must download the new launcher from the download page once. Launchers v0.1.3 and v0.1.7 read `aspherya/nightreign-pvp`, which GitHub now redirects here [HYPOTHESIS: they follow the
 redirect and see the new releases]. One command
 builds the zip, the launcher and `release.json`, and uploads them:
 
@@ -190,28 +190,25 @@ needed for shipped binaries); a release build of the launcher, helper and player
 folder (`NRPVP_PLAYER_TARGET_DIR`), so dependencies compile once; the pinned build inputs; `publish-release.ps1 -DryRun` packages
 `NightreignPvP.zip`, `NightreignPvP-Launcher.exe` and the SHA-256 `release.json`; `publish-ci-release.ps1` uploads them to a
 temporary **draft** in this repository (built-in `GITHUB_TOKEN`) and publishes it as the latest stable release only after every
-upload succeeds; then the same script mirrors it to the legacy releases repository (`LEGACY_RELEASES_REPO` in the workflow,
-`RELEASES_PUBLISH_TOKEN`). The mirror runs after the main release: if it fails, the release is out here but old launchers miss it. `Swatinem/rust-cache` keeps
+upload succeeds. `Swatinem/rust-cache` keeps
 compiled dependencies between runs. No workflow artifact is uploaded: the release holds the files. A manual run can keep the release
 a **draft** (players never see drafts). Never reuse a version or replace already-published assets. Update `releases/notes.txt` before merging.
 
 Runs with no explicit version take the higher of the workspace version (`Cargo.toml`) and one patch above the highest version ever
-used in this repository or the legacy one, drafts included, so versions always increase by one and a test draft's number is never reused. A minor
+used in this repository, drafts included, so versions always increase by one and a test draft's number is never reused. A minor
 or major step is a workspace version bump. (Until 2026-11-13 the run number was added to the patch, and the new repository restarted at
 0.1.x below the 0.2.0 that earlier testers had installed; the launcher refuses downgrades, so the workspace version went to 0.3.0;
 the move back to this repository on 2026-11-23 went to 0.4.0.) An explicit manual version is used as given. A rerun can replace unpublished draft assets only when that
 draft was built from the exact same commit (its body names the source commit); published releases cannot be overwritten.
-Tags here point at the source commit; in the legacy repository at its default branch, since the commit does not exist there.
+Tags point at the source commit.
 
 One-time setup by the repository owner:
 
 1. Keep this repository **public**: player releases go here (`github.repository`; override with the Actions variable
    `RELEASES_REPO`), the workflow embeds that name in the launcher, which reads it without a token, and publishing refuses to run
    while the target is not publicly readable. Build inputs stay a **draft** here (never visible to the public). The built-in
-   `GITHUB_TOKEN` (workflow `contents: write`) publishes. Only the legacy mirror needs the Actions **secret**
-   `RELEASES_PUBLISH_TOKEN`: a fine-grained token, resource owner `aspherya`, **Only select repositories > nightreign-pvp-releases**,
-   Repository permissions **Contents: Read and write**, nothing else (the built-in token cannot write to another repository).
-   Replace it before it expires: an expired one fails the mirror step and old launchers stop getting updates.
+   `GITHUB_TOKEN` (workflow `contents: write`) publishes: no personal token or Actions secret is needed (the old
+   `RELEASES_PUBLISH_TOKEN` is unused since 2026-11-23).
 2. CI builds the game data itself on every release (`build-gamedata.ps1`, step **Build game data**), from pinned inputs: the
    original game 1.03.3 files it reads, WitchyBND, ESDLang 0.5.1, the Smithbox 2.2.6 DLLs and me3. Nothing is compiled to make them.
    On the machine holding the pinned game unpack and tools:
@@ -233,8 +230,7 @@ r-unpacked.03.3 -Witchy Z:\Tools\WitchyBND-3.0.1.0\WitchyBND.exe -EsdTool Z:\To
    Regenerate and update the hash when game-data sources/pins change. A hosted Windows runner cannot generate
    game content without the local unpack and tools. The currently installed Arena test package is not a player input.
    The current player input has 21 files, including `menu/05_000_title.gfx`. Regenerate older bundles to include the custom title background.
-3. The workflow's built-in `GITHUB_TOKEN` downloads the input draft and creates and publishes the player release here;
-   `RELEASES_PUBLISH_TOKEN` only mirrors it to the legacy repository.
+3. The workflow's built-in `GITHUB_TOKEN` downloads the input draft and creates and publishes the player release here.
 4. Push the reviewed change to `main`. The workflow runs launcher/helper tests and player-DLL tests/lint, builds the complete
    package and publishes it. Failures leave the previous stable release active. To test without publishing, use a manual workflow
    run with **draft**, or build locally with `NRPVP_RELEASE_DIR`.
