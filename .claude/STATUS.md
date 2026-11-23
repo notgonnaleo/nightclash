@@ -1,76 +1,69 @@
-# Status (updated 2026-11-17)
+# Status (updated 2026-11-23)
 
 **The only "now" doc.** Rules: keep it under ~8 KB; replace lines instead of appending history (results go to `testing-log/`, traps to
 [TRAPS.md](TRAPS.md), decisions to [DECISIONS.md](DECISIONS.md), tools to [TOOLS.md](TOOLS.md), live cards to [TASKS.md](TASKS.md)).
 
 ## 1. What the mod does today
 
-Mode: Battle Royale (`MODE-01`, [re/PROJECT_SCOPE.md](re/PROJECT_SCOPE.md)). **Arena (`MODE-02`) is in design since 2026-11-08** (PROJECT_SCOPE §Arena, TASKS ARENA-0), ahead of the BR release.
+Two modes ship together in every release: **Battle Royale** (`MODE-01`) and **Arena** (`MODE-02`), rules in
+[re/PROJECT_SCOPE.md](re/PROJECT_SCOPE.md). "One PC" = two emulated instances under `nro`; only real Steam proves networking.
 
 | Feature | State |
 |---|---|
-| PvP between players, PvE alongside; rivals marked hostile automatically; teams from player IDs (`team_size` 1/2) | **Works** (Nucleus, real Steam). `team_size = 2` was tested only for the downed / revive rule (Nucleus); **a Duo party now queues and starts a match as teammates on one PC (`mi-duo-party`, 2026-11-02)**; the RW features between teammates (runes, HUD filter, revive, team win) and `team_size = 3` are still unseen |
-| One-click install (`dist\NightreignPvP.zip`), player build with no overlay | **Works on two PCs** (FS-UI2, 2026-10-21) |
-| Solo matchmaking over real Steam (queue → match → same Roundtable → expedition as rivals); Battle Royale in the stock table menu | **Finished** (Leonardo, 2026-11-07: works on real Steam with 3 players, no more changes). 6 players only in automated tests |
-| **No click after Commence (MM-3g, MM-7):** the host's game makes its lobby by itself, no Steam window, everybody is marked ready, the expedition starts by itself | **Finished, works on real Steam** (2026-11-07, 3 players, as joiner and as host: all present in ~10 s, landed ~70 s after the match was found, no Steam window or notification on any screen) |
-| **Battle Royale card in the Roundtable expedition list** (UI-3): the last card, always available; Commence on it starts our queue, any other card is a normal vanilla expedition | **Works on one PC** (2026-11-02; the card is now told by the chosen target list, which also holds on other saves, 2026-11-05). Built into `regulation.bin` (instant). The Deep of Night checked (vanilla Commence). Open: the hawk crossing and other rules also run in normal expeditions (TASKS MODE-SCOPE); not seen on two PCs |
-| **Night's Tide death = defeated for good** (fixed 2026-11-07): told by the rain SpEffect on LOCAL, not by the last-attacker field (stale after a fight: a tide death respawned the player in a loop) | **`tide-defeat` PASS on one PC** |
-| **The final circle closes to a point (TIDE-MAX, no match timer):** `regulation.bin` final radius 40 → 0 m, tide damage vanilla; Night 2's circle reaches ~0.03 m at 23:59:59 and the tide ends the match. Day 2's first circle is 347.6 m (vanilla 367.7: the game derives it). The game's night-2 fallback (7507 after 600 s) ends nothing | **`tide-close-max` PASS on one PC** (branch `tide-close-max`); not seen on two PCs |
-| Downed rule: rival hits take 3 s off the bleed-out; teammates revive; rivals cannot revive rivals | **Works** (Nucleus). Not yet over real two-PC lag |
-| Hawk crossing at the start | **Works solo**, on by default; not run in an FS |
-| **Match rules (RW-1/2/4):** killed by a rival or the tide = **defeated for good** (body held; default `defeat_exit_secs = 0` = watch until the match ends, F10 leaves; a value above 0 shows the defeat screen after that many seconds; nobody respawns); killed by a mob, boss or fall = the game's own respawn; the match ends the moment one team is left, on any day; **free Day 1** (`day1_secs` = 1020, no tide, no night), Day 2 vanilla | **PASS on one PC** (`day1-free`, `defeat-mob`, `defeat-rival`, `match-win`, `match-win-end`, `match-loss`). Not seen on two PCs (FS-RW1, TESTING §6) |
-| **Spectating:** a defeated player watches a living one (held body follows), mouse / d-pad switch player, F10 leaves, Esc / pad Start open the menu; **a hint with these controls shows when the watching starts and every 45 s** (UI-4) | **Works on real Steam** (2026-11-07, 12 min of spectating). **Bug: the hint shows on every screen** (TASKS FS7-1). Camera smoothness open |
-| **RW-3 defeat drops:** a rival's kill drops the victim's weapons (level kept), talismans and picked-up consumables where they fell; the host makes the drop, everyone can pick it; **runes are discarded** | **Built, `mi-rw3-items` PASS (2026-11-01)**; the inventory part verified by hand; two-PC check left |
-| **RW-8 runes** shared only inside the own team | **Built and accepted on one PC** (`mi-rw8-runes` PASS 3/3, 2026-10-28). Open: Duo/Trio teammate, client-side kill |
-| **RW-9 HUD filter:** rivals and their map pins (with the green beam) are off the map, compass, 3D world, party bars and name tags | **Built, seen with two instances** (`mi-rw9-rivals` PASS 2/2, `mi-rw9-markers`, `mi-pin-beam`). The pin toast ("Ally is showing location") is off in every match, for teammates too (UI-5, `mi-toast-solo`); open: Duo/Trio teammates |
-| Enemy strength by team size (RW-10) | **Accepted: Leonardo found it balanced (2026-11-01)** |
-| Private match (RW-6): `private_code` in `nrpvp.toml` | **Works on two instances** (`mi-private-room`: same code meets; `mi-private-mismatch`: different codes never do; 2026-11-11). Players set the code in the launcher's Private room tab (branch `launcher-app`); not seen on real Steam |
-| **Orchestrator `nro`** (puppets, keys, screenshots, scenarios, 2-3 real instances with emulated Steam) | **Works**; `scripts\regress.ps1` runs the single-game scenarios, `mi-*` run by name ([orchestrator/SCENARIOS.md](orchestrator/SCENARIOS.md)) |
-| **Killfeed (KF-1):** `A downed B`, `A killed B` as toasts, character names ([re/TOAST_KILLFEED.md](re/TOAST_KILLFEED.md)) | **Works on real Steam** (2026-11-07, real names, downed and killed) |
-| **K/D scoreboard (SB, [SCOREBOARD.md](SCOREBOARD.md)):** in a match the pause menu (Esc / pad Start) shows your own `Kills: n / Deaths: n` as the game's blinking centre message; back at the Roundtable after a match the game's dialog lists everyone (players and bots) by place with kills and deaths, 3 lines a page, OK for the next | **Works with 3 real players** (2026-11-07). **Bugs: the own score shows on every screen and can show the previous match's numbers** (FS7-1); the ranking after a trade looks wrong (FS7-7) |
-| **GRACE-1:** a PvP fight switches Sites of Grace off for that player (flag 7525, 15 s or until no rival is near) | **Works on real Steam** (2026-11-07: ON from a real hit, OFF after 15 s or no rival near) |
-| **Bots ([BOTS.md](BOTS.md)), offline training mode (beta):** Matchmaking Settings > Bots: On + Battle Royale card + Solo + Commence = Solo against 5 AI Nightfarers, no other players. They start at separate far camps; every minute the farthest comes to ~100 m of you; they count for the win, a bot kill defeats you (with only bots left you lose at once) | `mi-bots-menu`, `bots-match` PASS on one PC; Leonardo liked his second match (2026-11-07). Not yet: levels, bot names, Duo/Trio with bots, friends + bots |
-| Own networking: `net::bus` facts between games | **Built** (NET-1/2); users today RW-3 (on) and RW-5 (off). Replacing Seamless Co-op is a study ([NETWORKING.md](NETWORKING.md)) |
+| PvP and PvE together, rivals marked hostile, teams from player IDs | **Works on real Steam** |
+| Solo matchmaking, no click after Commence (the host's game makes the lobby, everyone ready, the expedition starts by itself) | **Finished on real Steam** (2026-11-07, 3 players, as host and joiner, no Steam window or notification). 6 players only in automated tests |
+| Battle Royale and Arena cards in the Roundtable expedition list | **Works**; any other card is a vanilla expedition |
+| Match rules: rival or tide kill = out for good, mob / boss / fall = the game's respawn, free Day 1, the match ends when one team is left, the final circle closes to a point (TIDE-MAX) | **Works**; tide defeat and TIDE-MAX PASS on one PC |
+| Spectating after a defeat (switch player, F10 leaves, hint) | **Works on real Steam** (2026-11-07). Camera smoothness open |
+| Defeat drops (weapons, talismans, consumables; runes discarded), team-only runes, hidden rivals (map, compass, name tags, pins) | **PASS on one PC**; Duo / Trio teammates open. RW3-BIGINV: drop skips talismans on a save with many relics |
+| Killfeed, Sites of Grace off in a PvP fight (GRACE-1) | **Works on real Steam** (2026-11-07) |
+| K/D scoreboard (own score in the pause menu, everyone's after the match; Arena round score) | **Works on real Steam**; its bugs fixed in FS7-1 / FS7-7, real-Steam check open |
+| Host migration (the game's own, also after the host's Alt-F4) | **Works on real Steam** (2026-11-07) |
+| Hawk crossing at the start | **Works solo**; not seen in a friend session |
+| Duo / Trio, MM-FILL (fill a short party with random players) | **Built**: a Duo party and a filled Duo start a match on one PC. 3 teams, Trio and real Steam open (DUOTRIO-1, needs 4+ players) |
+| Private room (`private_code`, set in the launcher's Private room tab) | **Works on two instances**; not seen on real Steam |
+| Bots, offline practice: Bots On + Solo + a card = BR against 5 AI Nightfarers, or Arena against one level-13 bot | **PASS on one PC**; Leonardo played both |
+| **Arena 1v1:** Heolstor's arena, best of 3, level 15, Sparring loadout at max upgrade (saved loadouts at the Sparring Equipment), consumables and a full ultimate every round (one ultimate per round), round ends at 1 HP (no down), 3-minute clock, "One minute left!", 60 s overtime HP drain | **Played on real Steam** (2026-11-11/12/15/17, Leonardo + friends) on builds up to 0.3.x, which still had the get-up bug. The current rules (1 HP end, clock, overtime, one ultimate) PASS on one PC and against the bot (2026-11-17); **not yet seen on real Steam** |
+| Launcher app `NightreignPvP-Launcher.exe` (install wizard, Seamless Co-op via Nexus, auto-update of itself and the mod, Private room) and the version gate (an old mod or no version check = no start, LAUNCH-GATE) | **In use by players since v0.1.41**; LAUNCH-GATE's human acceptance is open (TASKS) |
+| Orchestrator `nro` (puppets, keys, screenshots, scenarios, 2-3 instances) | **Works** ([orchestrator/SCENARIOS.md](orchestrator/SCENARIOS.md)) |
+| Own networking (`net::bus`) | **Built** (NET-1/2); replacing Seamless Co-op is a study ([NETWORKING.md](NETWORKING.md)) |
 
-**Launcher app (LAUNCH-1, branch `launcher-app`):** `NightreignPvP.exe` (Tauri 2): first-run wizard (game folder, Seamless Co-op via Nexus, the mod from GitHub releases), update check, Play then the app closes. **Built, unit-tested, brought up to date with `main` (2026-11-08) and staged as v0.2.0 with `-DryRun` (this build: hawk respawn, FS7 fixes); warns about foreign files in the game folder. Not yet tried by Leonardo (PR).** A draft: Leonardo creates the public releases repo; **no release is published before the final test session with more than 3 players** (RELEASE §5b).
+**Not built yet:** Arena Duo / Trio, the in-game password field (the launcher tab replaces it for now), Solo die-at-once with a revive
+item (SOLO-REVIVE), the most-kills tiebreak.
 
-**Not built yet** (scope in PROJECT_SCOPE): the most-kills tiebreak for edge cases (no timer, by decision), Solo die-at-once with a revive item.
-
-**Known bug:** the game crashes on quit (0xC0000374, heap corruption) on most runs since 2026-10-10; not proven to be Seamless Co-op's. Runs end with `nro stop` (kill) for this reason.
+**Known bugs:** the game crashes on quit (0xC0000374, heap corruption) on most runs since 2026-10-10, not proven to be Seamless Co-op's
+(runs end with `nro stop`); some Arena ultimates deal no damage to a rival (ARENA-ULT-DMG).
 
 ## 2. What is deployed where
 
 | Place | What |
 |---|---|
-| `dist\NightreignPvP.zip` in the main checkout | **Arena test zip** built 2026-11-13 15:39 UTC from branch `arena-fs-fixes` b365217 (PR aspherya#1, not merged; tree dirty only by the removed `.github/workflows/ci.yml`), `-MatchPlayers 2 -Arena`, `nrpvp.dll` 6C24A4FD801F9604, gamedata emevd 3D158D364389BE3E (rebuilt with the title background). For the FS-ARENA3 runbook (TESTING §6). **Not installed yet** (Leonardo installs; the friend needs this same zip: compare `VERSION.txt`). Do not send the 2026-11-12 build (9F2273B4...) |
-| This checkout's `dist\` after `scripts\build.ps1` | Dev build for `launch.ps1` and `nro` (`nrpvp.toml` = dev toml with `mm_queue` / `br_menu` off) |
-
+| Players | **v0.4.0**, the latest release of `notgonnaleo/nightreign-pvp` (2026-11-23, built by CI from `main` 92457fc): BR + Arena, 6 players with a 2-player minimum. Download page https://notgonnaleo.github.io/nightreign-pvp/ (Pages from `main` `/docs`). Its patch notes still repeat v0.3.x's text |
+| Old launchers (v0.3.3 and older) | Point at the deleted `aspherya/nightreign-pvp-releases`: the gate stops them ("Could not check for updates"). Leonardo tells players on Discord to download the new launcher once (DECISIONS 2026-11-23) |
+| This checkout's `dist\` after `scripts\build.ps1` | Dev build for `launch.ps1` and `nro` |
 
 ## 3. Next
 
-**Friend session of 2026-11-07 (3 players, real Steam, testing-log):** host migration works (two in one match, the match went on; also after the host's Alt-F4: HM-1
-done), matchmaking is finished (Leonardo), killfeed, grace lock, spectate, defeat and the scoreboard work with real hits. Leonardo:
-the mod is close to done; nothing broke the game.
+1. **A real-Steam Arena on v0.4.0** (both players' logs): the 1 HP round end under lag, clock and overtime, one ultimate per round, and
+   ARENA-FS12's acceptance (rival's weapons, no mid-round respawn, one Commence to queue again).
+2. **ARENA-ULT-DMG:** which ultimates do not hurt a rival, Nightfarer by Nightfarer.
+3. **Next friend session with 4+ players:** FS7-1..8 on real Steam, MM-FILL and Duo / Trio (DUOTRIO-1). Collect every player's logs.
+4. LAUNCH-GATE human acceptance (TASKS).
 
-**2026-11-08:** FS7-1..8 merged (#65–#67); their real-Steam checks wait for the next FS. **MM-FILL built (branch `mm-fill`, PR):** Duo / Trio
-accept a player alone (or a pair in Trio) and fill the team with random players; the match now takes its teams from the queue roster
-(also needed by premade Duo / Trio with 3 teams); `mi-duo-fill`, `mi-duo-party`, `mi-zero-click` PASS. Needs an FS with 4+ players.
-
-**Next: Leonardo's list from that session, TASKS "After the friend session of 2026-11-07" (FS7-1..7):** messages only on the own screen
-(also the stale K/D), Battle Royale card first, Bots Off at start, Solo/Duo/Trio from the party size, F10 also leaves the session, the trade ranking, a log line for
-the Solo instant death, then the respawn on the hawk (RE first). Then a new zip and Duo / Trio with friends (DUOTRIO-1, never tested on
-real PCs). Before that session collect **every** player's logs.
-
-**Arena (MODE-02), started 2026-11-08** (rules PROJECT_SCOPE §Arena, history testing-log): in every player release since v0.1.41 (2026-11-13), with saved loadouts at the Sparring Equipment (in-game PASS, testing-log 2026-11-13-saved-loadouts). **ARENA-1** the card queues two players (Solo 1v1) into Heolstor's empty arena, facing each other; **ARENA-2** best of 3 with resets, WIN / LOSE, random players leave the session; **one ultimate per round and the consumables back at every reset (ARENA-R17, Leonardo's bot match PASS 2026-11-17, on `dev`); next: some ultimates do not hurt a rival, Nightfarer by Nightfarer (ARENA-ULT-DMG)**. **ARENA-3 spikes done (2026-11-09, branch `arena-3-spike`, MEMORY_MAP §29):** level 15 (game's SetLevel + recovery), give + equip of a Sparring loadout on the game's thread, the weapon's skill (Seppuku) and spells, max upgrade, all seen in game. **ARENA-3 built:** at the arena spawn level 15, the Sparring loadout at max upgrade with its skills and the consumables in the pouch and the 3-minute round limit with a host verdict: **solo check and `mi-arena-loadout` (two instances) PASS 2026-11-09**. **ARENA-4 built (branch `arena-4`):** Bots On + Solo + the Arena card = an offline match against one level-13 bot on spawn B, best of 3 with the same rounds (offline LOCAL holds SpEffect 8970061 so 0 HP is a down): **`mi-arena-bot` PASS and Leonardo's match PASS 2026-11-10** (the bot stays at level 13, Leonardo). Next: the player build. **Arena tests on real Steam** (2026-11-11 OdoKadachi, 2026-11-12 Samuka Games, testing-log): ARENA-LV held max HP on real Steam; the 2026-11-12 bugs (rival drawn with its starting weapon, a mid-round respawn at level 14, a vanilla solo run on the host's next pick) are fixed on branch `arena-fs-fixes` (TASKS ARENA-FS12; `mi-arena-loadout`, `mi-arena-requeue` PASS 2026-11-13), waiting for the next real-Steam Arena.
-
-**Later:** GFX-1/2 (in-game UI, SB-5), player count (HOST_MIGRATION), SOLO-REVIVE, MODE-SCOPE, MM-8, normal
-expeditions (Leonardo has an idea). No match timer: the tide closes to a point (TIDE-MAX).
+**Later:** GFX-1/2 (in-game UI), player count (HOST_MIGRATION), SOLO-REVIVE, MODE-SCOPE, MM-8, CLOUD-1..4 (log upload first),
+normal expeditions (Leonardo has an idea). No match timer: the tide closes to a point.
 
 ## 4. Repository state
 
-- `main` has everything above (PRs up to #27).
-- Tests: `cargo test --workspace`, clippy `-D warnings` (dev and `--no-default-features`) and fmt; CI runs the same.
+- **`notgonnaleo/nightreign-pvp`, public** (moved from `aspherya` on 2026-11-23). PRs go to `dev`; merging `dev` into `main` publishes a
+  release by itself unless only docs, `scenarios/`, `docs/` or `design/` changed (RELEASE.md §6). Update `releases/notes.txt` first.
+- **Only `dev` and `main` exist** (2026-11-23). Every older local branch (73, incl. unmerged ones such as `launcher-app`, `arena-0-spike`,
+  `claude/nro-suite`, `claude/n6-headless-twins`) is in `..\nightreign-pvp-branch-backup-2026-11-23.bundle` next to the checkout;
+  restore one with `git fetch <bundle> <name>:<name>`. Branch names in TASKS / testing-log refer to that bundle or to merged work.
+- Tests: no CI on pull requests; run `cargo test --workspace`, clippy `-D warnings` (dev and `--no-default-features`) and fmt before
+  merging. The release workflow runs the launcher and player-DLL subset again on `main`.
 - Pins: game 1.03.3 (exe 1.3.3.0), Seamless Co-op v1.1.3, bundled me3 0.11.0 (`TECHNICAL_NOTES.md` §1, `pins/nightreign.toml`).
-- Builds: `cargo build --release` = developer DLL (feature `dev`); `--no-default-features` = player DLL (refuses `dev_mode`). MSVC Build Tools needed (`D:\Programs\Microsoft Visual Studio`).
+- Builds: `cargo build --release` = developer DLL (feature `dev`); `--no-default-features` = player DLL (refuses `dev_mode`). MSVC Build
+  Tools needed (`D:\Programs\Microsoft Visual Studio`).
 - Friend-session logs are gitignored (`*.log`); they live in `.claude/experiments/<session>/` on Leonardo's PC.
-- `.mcp.json` registers the `nightreign` MCP server (`target\release\nro-mcp.exe` of the main checkout): `cargo build --release -p nro -p nro-mcp`.
+- `.mcp.json` registers the `nightreign` MCP server (`target\release\nro-mcp.exe`): `cargo build --release -p nro -p nro-mcp`.
