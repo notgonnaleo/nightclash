@@ -222,4 +222,5 @@ every release, a token that reads releases reads source) no longer apply to a pu
 `GITHUB_TOKEN` and tags the source commit; the build-inputs draft stays a draft (drafts are invisible to the public). The workspace
 version went to 0.4.0 so the first release here is above v0.3.3. **Bridge:** launchers up to v0.3.3 have the old repository built
 in, so every release is also mirrored there (`LEGACY_RELEASES_REPO`, needs `RELEASES_PUBLISH_TOKEN`); their auto-update installs a
-launcher that reads the new one. Drop the mirror once no player runs such a launcher. How-to: RELEASE.md §5b, §6.
+launcher that reads the new one. Drop the mirror once no player runs such a launcher. The download page moved here too
+(`docs/`, GitHub Pages from `main` `/docs`, Leonardo, same day). How-to: RELEASE.md §5b, §6.

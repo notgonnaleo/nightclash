@@ -2,7 +2,7 @@ name: Build player release
 
 # Every push to main that changes shipped code builds, tests and publishes a player release in this (public) repository, and
 # mirrors it to the legacy releases repository so launchers built before 2026-11-23 update to one that reads here (RELEASE.md §6).
-# Docs-only pushes do not run: a docs change needs no release.
+# Pushes that only touch docs or the download page (docs/, design/) do not run: they need no release.
 on:
   push:
     branches: ['main']
@@ -10,6 +10,9 @@ on:
       - '.claude/**'
       - '**/*.md'
       - 'scenarios/**'
+      # The download page (GitHub Pages from main /docs) and its design tokens: editing them never builds a release.
+      - 'docs/**'
+      - 'design/**'
   workflow_dispatch:
     inputs:
       version:

@@ -122,15 +122,18 @@ The launcher app (`crates/nrpvp-app`, `NightreignPvP.exe`) installs and updates 
 repository**, `notgonnaleo/nightreign-pvp` (since 2026-11-23, DECISIONS). Each release holds `release.json`,
 `NightreignPvP.zip` and `NightreignPvP-Launcher.exe` (plus GitHub's source archives, harmless now that the source is public).
 
+**Download page** in `docs/` here (moved from the legacy repository on 2026-11-23): static `index.html` + `site.css` on Bootstrap
+5, theme tokens in `design/tokens.json` → `node design/build-tokens.mjs` → `docs/ui/tokens.css`; GitHub Pages from `main` `/docs`,
+https://notgonnaleo.github.io/nightreign-pvp/ (no game art; the copy sells Battle Royale and Arena as PvP). Its buttons link
+`releases/latest/download/NightreignPvP-Launcher.exe`, so a new release needs no page edit; the version line and "What's new" come
+from the GitHub API in the browser (with no release yet they fall back to "Free · Windows"). Pushes that only touch `docs/` or
+`design/` never build a release (`paths-ignore`). Preview locally: `.claude/launch.json` config `download-page`.
+
 **Legacy releases repository** `aspherya/nightreign-pvp-releases` (2026-11-13 to 2026-11-23, up to v0.3.3): launchers up to v0.3.3
-have it built in, so CI mirrors every release there until those launchers are gone (§6); their auto-update brings in a
-launcher that reads this repository. It also still hosts the **download page** in `docs/` (static `index.html` + `site.css` on Bootstrap 5, theme tokens in `design/tokens.json` → `node
-design/build-tokens.mjs` → `docs/ui/tokens.css`; GitHub Pages from `main` `/docs`, https://aspherya.github.io/nightreign-pvp-releases/,
-since 2026-11-13; no game art, the copy sells Battle Royale and Arena as PvP). Its buttons link `releases/latest/download/NightreignPvP-Launcher.exe`, so a new release needs no page edit; the
-version line and "What's new" come from the GitHub API in the browser. That repository has no workflows: editing the page never builds
-or publishes a release (the build runs only on pushes to `main` here that touch shipped code). The page's download button
-points at that repository's mirror, so it keeps working while the mirror runs; moving the page here is open. Launchers v0.1.3 and
-v0.1.7 read `aspherya/nightreign-pvp`, which GitHub now redirects here [HYPOTHESIS: they follow the redirect and see the new releases]. One command
+have it built in, so CI mirrors every release there until those launchers are gone (§6); their auto-update brings in a launcher
+that reads this repository. Its old page, https://aspherya.github.io/nightreign-pvp-releases/, should only redirect to the new
+one. Launchers v0.1.3 and v0.1.7 read `aspherya/nightreign-pvp`, which GitHub now redirects here [HYPOTHESIS: they follow the
+redirect and see the new releases]. One command
 builds the zip, the launcher and `release.json`, and uploads them:
 
 ```powershell
