@@ -1,13 +1,17 @@
 # NIGHTREIGN PVP
 
-A PVP Mod that includes Battle Royale and Arena (Coming soon) modes for **ELDEN RING NIGHTREIGN**. Players queue from the game's own expedition menu, land on Limveld as rivals, fight
-each other and the map's enemies, and the last player or team standing wins.
+A PvP mod for **ELDEN RING NIGHTREIGN** with two modes: **Battle Royale**, where players land on Limveld as rivals, fight each other
+and the map's enemies, and the last player or team standing wins; and **Arena**, a best-of-three duel in Heolstor's arena. Players
+queue from the game's own expedition menu.
+
+**Download:** https://notgonnaleo.github.io/nightreign-pvp/ (the launcher), or the
+[latest release](https://github.com/notgonnaleo/nightreign-pvp/releases/latest).
 
 It runs on top of [Seamless Co-op](#requirements), with no anti-cheat and no connection to the official matchmaking servers. There is no
 server of ours and no overlay: players find each other through Steam lobbies, and everything on screen is the game's own menus and messages.
 
-> **Status: pre-release.** The Solo mode is playable and has been played on two PCs. Some of the newest parts are only proven on one PC:
-> see [What works today](#what-works-today).
+> **Status: pre-release.** Battle Royale Solo and Arena 1v1 are playable and have been played over real Steam. Some of the newest
+> parts are only proven on one PC: see [What works today](#what-works-today).
 
 **Contents:** [For players](#for-players) · [The rules](#the-rules) · [What works today](#what-works-today) ·
 [For developers](#for-developers) · [The test orchestrator (`nro`)](#the-test-orchestrator-nro) · [Project layout](#project-layout) ·
@@ -19,30 +23,40 @@ server of ours and no overlay: players find each other through Steam lobbies, an
 
 ### Requirements
 
-- ELDEN RING NIGHTREIGN on Steam, version **1.03.3**
-- Seamless Co-op for Nightreign, version **1.1.3**, installed in the game folder
-- The same mod zip on every PC
+- Windows, and ELDEN RING NIGHTREIGN on Steam, version **1.03.3**
+- Seamless Co-op for Nightreign, version **1.1.3** (the launcher helps you install it)
+- An internet connection: every start checks that you have the latest version, because everyone in a match needs the same one
 
-Nothing else is needed: the zip brings its own copy of [me3](https://github.com/garyttierney/me3), the mod loader.
+The mod brings its own copy of [me3](https://github.com/garyttierney/me3), the mod loader.
 
-### Install
+### Install with the launcher (recommended)
 
 1. Back up `%APPDATA%\Nightreign`, where the saves live.
-2. In Steam, right-click the game > **Manage** > **Browse local files**, then open `Game`. It is the folder with `nightreign.exe` and
-   `nrsc_launcher.exe`.
-3. If an older version is there, delete `nrpvp_launcher.exe` and the `NightreignPvP` folder.
-4. Drag `nrpvp_launcher.exe` and the whole `NightreignPvP` folder from the zip into that folder.
+2. Download **`NightreignPvP-Launcher.exe`** from the [download page](https://notgonnaleo.github.io/nightreign-pvp/) and run it.
+3. Follow its first-run steps: it finds the game folder, opens Seamless Co-op's Nexus page if it is missing and installs the zip you
+   download, then installs the mod.
 
-**To uninstall,** delete the same two items. Nothing else is changed.
+The launcher keeps itself and the mod up to date: on each start, with the game closed, it installs a newer release by itself.
+
+### Install by hand
+
+1. Back up `%APPDATA%\Nightreign`.
+2. Download `NightreignPvP.zip` from the [latest release](https://github.com/notgonnaleo/nightreign-pvp/releases/latest).
+3. In Steam, right-click the game > **Manage** > **Browse local files**, then open `Game`. It is the folder with `nightreign.exe` and
+   `nrsc_launcher.exe`.
+4. If an older version is there, delete `nrpvp_launcher.exe` and the `NightreignPvP` folder.
+5. Drag `nrpvp_launcher.exe` and the whole `NightreignPvP` folder from the zip into that folder.
+
+**To uninstall,** delete the same two items (and the launcher app, if you used it). Nothing else is changed.
 
 ### Play
 
-1. Start Steam, then double-click **`nrpvp_launcher.exe`**.
-2. At the Roundtable table, open the expedition list and pick the **Battle Royale** card, the last one in the list.
-3. In **Matchmaking Settings**, set **Number of Players** to **Solo**.
+1. Start Steam, then press **Play** in the launcher (or double-click **`nrpvp_launcher.exe`** in the game folder).
+2. At the Roundtable table, open the expedition list and pick the **Battle Royale** or the **Arena** card, at the end of the list.
+3. In **Matchmaking Settings**, set **Number of Players** to **Solo**. Set **Bots** to **On** to practise offline against AI Nightfarers.
 4. Press **Commence**. To stop searching, press the same button again.
 
-That is the last click. When the match is found, everyone is brought together and the expedition starts by itself, about a minute later.
+That is the last click. When the match is found, everyone is brought together and the match starts by itself, about a minute later.
 
 > The mod only loads through `nrpvp_launcher.exe`. Steam's **Play** button starts the normal game with anti-cheat and without the mod, which
 > is how you play the normal game. Any other card in the list is also a normal expedition.
@@ -59,7 +73,7 @@ That is the last click. When the match is found, everyone is brought together an
 
 ### Settings
 
-Optional. Add them to `NightreignPvP\nrpvp.toml`. Match settings must be the same on every PC.
+Optional. Add them to `NightreignPvP\nrpvp.toml` (the launcher's **Private room** tab sets `private_code` for you). Match settings must be the same on every PC.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -71,17 +85,23 @@ Optional. Add them to `NightreignPvP\nrpvp.toml`. Match settings must be the sam
 
 ### If something goes wrong
 
-- **"This launcher must be in the game folder":** the files are in the wrong place. Go back to [Install](#install), step 2.
+- **"Update required" or "Your Nightreign PvP is vA, but vB is out":** let the launcher update, or download the new zip.
+- **"Could not check for updates" / "could not check for the latest version":** the mod needs the internet to start. If you have it and
+  your launcher is v0.3.3 or older, that launcher looks in a place that no longer exists: download the new one from the
+  [download page](https://notgonnaleo.github.io/nightreign-pvp/).
+- **"This launcher must be in the game folder":** the files are in the wrong place. Go back to [Install by hand](#install-by-hand), step 3.
 - **"Seamless Co-op was not found":** install Seamless Co-op first.
 - **The game does not start:** make sure Steam is running.
 - **Windows asks to run the file:** choose **Run**, or **More info** > **Run anyway** on a blue "Windows protected your PC" box.
-- **Never matched:** everyone needs the same zip. Compare `NightreignPvP\VERSION.txt` on each PC.
+- **Never matched:** everyone needs the same version. Compare `NightreignPvP\VERSION.txt` on each PC.
 
 To report a problem, send the `NightreignPvP\logs` folder.
 
 ---
 
 ## The rules
+
+### Battle Royale
 
 Battle Royale is built for 6 players: 6 solos, 3 duos or 2 trios. Pre-release zips usually start at 2 players, so a test needs only one friend.
 
@@ -96,7 +116,21 @@ Battle Royale is built for 6 players: 6 solos, 3 duos or 2 trios. Pre-release zi
 - **Sites of Grace** give nothing to a player in a PvP fight, until 15 s after the last hit or until no rival is near.
 - **Killfeed:** `A downed B` and `A killed B` appear as the game's own messages, with character names.
 
-The full specification, including the planned Arena mode, is in [PROJECT_SCOPE.md](.claude/re/PROJECT_SCOPE.md).
+### Arena
+
+A 1v1 duel in Heolstor's arena (no boss, no expedition). Duo and Trio are planned.
+
+- **Best of three:** the first to win two rounds wins the match.
+- **Even ground:** everyone is level 15, every weapon at its maximum upgrade.
+- **Your build:** you fight with the loadout you made with the Sparring Equipment in the Sparring Grounds; without one, the Nightfarer's
+  default weapon.
+- **A round ends at 1 HP:** nobody dies or is downed; the first player brought to 1 HP loses the round.
+- **3-minute rounds:** "One minute left!" comes 60 s before the limit. Then up to 60 s of overtime drains both players' HP; the first at
+  1 HP loses. If nobody reaches it, the higher HP in percent wins.
+- **Every round** starts with full HP, FP and flasks, your consumables back, and a full Ultimate Art gauge that does not charge again in
+  that round.
+
+The full specification is in [PROJECT_SCOPE.md](.claude/re/PROJECT_SCOPE.md).
 
 ---
 
@@ -118,8 +152,11 @@ prove real networking. The current state is always in [STATUS.md](.claude/STATUS
 | Sites of Grace lock, killfeed | One PC | Two PCs |
 | Host migration (the game's own) | One PC | Real Steam |
 | Duo and Trio | A Duo party reaches an expedition, on one PC | The 3-team match, rules between teammates, Trio |
+| Arena 1v1 (rounds, clock and overtime, loadout, one ultimate per round) | Two PCs, real Steam; against a bot | Some Ultimate Arts do not hurt a rival; Duo / Trio |
+| Bots (offline practice) | One PC | |
+| Launcher app: install, auto-update, version check | Published releases | |
 
-**Not built yet:** match time limit, the in-game password field for private matches, the Arena mode.
+**Not built yet:** the in-game password field for private matches (the launcher's Private room tab works instead), Arena Duo / Trio.
 
 **Known issues:** the game often crashes when quitting (heap corruption, cause unproven), and the table menu stays open during the departure.
 
@@ -170,9 +207,16 @@ powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1 -MatchPlaye
 This writes `dist\NightreignPvP.zip` and builds its own player DLL, without the developer tooling. `-MatchPlayers N` (2 to 6) is how many
 players start a match. Everyone who should meet needs the same N. The full procedure is in [RELEASE.md](.claude/RELEASE.md).
 
+### Releases
+
+Work goes to `dev` through pull requests; `dev` is merged into `main` for a release. **Every push to `main` that changes shipped code
+publishes a new release of this repository by itself** (`.github/workflows/release.yml`: tests, game data from pinned inputs, the zip,
+the launcher and `release.json`), and every launcher picks it up. Pushes that only touch docs, `scenarios/`, `docs/` or `design/`
+do not. Write the player-facing notes in `releases/notes.txt` before merging. Details: [RELEASE.md](.claude/RELEASE.md) §5b and §6.
+
 ### Checks before a commit
 
-The same checks run in GitHub Actions.
+There is no CI on pull requests: run these before merging. The release workflow runs the launcher and player-DLL subset again on `main`.
 
 ```powershell
 cargo fmt --all --check
@@ -300,13 +344,16 @@ in [SCENARIOS.md](.claude/orchestrator/SCENARIOS.md).
 | Path | What it is |
 |---|---|
 | `crates/nrpvp` | The mod (`nrpvp.dll`) |
-| `crates/nrpvp-launcher` | `nrpvp_launcher.exe`, the player's one-click start |
+| `crates/nrpvp-launcher` | `nrpvp_launcher.exe`, the player's one-click start, and the release lookup and version check |
+| `crates/nrpvp-app` | `NightreignPvP-Launcher.exe`, the launcher app (Tauri): install, updates, Play, private room |
 | `crates/nrcon` | `nrcon.exe`, the console client for a running developer game |
 | `crates/nro`, `nro-core`, `nro-mcp` | The orchestrator and its MCP server |
 | `gamedata/` | Sources of the game data: texts, event scripts, the Battle Royale card |
 | `scenarios/` | Automated test scenarios |
 | `profiles/`, `pins/` | me3 profiles, and the versions and hashes every launch is checked against |
 | `scripts/`, `tools/` | Build, launch, packaging and regression scripts, and the regulation writer |
+| `docs/`, `design/` | The download page (GitHub Pages from `main` `/docs`) and its design tokens |
+| `releases/notes.txt`, `.github/` | Notes for the next release, and the release workflow |
 | `.claude/` | All project documentation |
 
 Inside the mod, game memory lives in `crates/nrpvp/src/game/`, matchmaking in `mm/`, the Steam calls in `steam/`, the match rules in `features/` and
@@ -322,14 +369,14 @@ the data channel between games in `net/`.
 | [MATCHMAKING.md](.claude/MATCHMAKING.md) | How the queue and the match start work, and how to read their logs |
 | [MEMORY_MAP.md](.claude/re/MEMORY_MAP.md) | Every game address we use and how it was confirmed |
 | [TOOLS.md](.claude/TOOLS.md), [CONSOLE.md](.claude/CONSOLE.md) | Build tools, test routes, console commands |
-| [RELEASE.md](.claude/RELEASE.md) | Building and releasing the player zip |
+| [RELEASE.md](.claude/RELEASE.md) | Building and releasing the player zip and the launcher |
 | [TESTING.md](.claude/TESTING.md), [TRAPS.md](.claude/TRAPS.md) | Test plans and runbooks, and mistakes already made |
 
 [.claude/CLAUDE.md](.claude/CLAUDE.md) has the full map of the documentation and the working rules of the project.
 
 ## Safety and legal
 
-- **Never go online with a modded game.** Start it only through `nrpvp_launcher.exe`, `scripts\launch.ps1` or `nro`, which run without
+- **Never go online with a modded game.** Start it only through the launcher, `nrpvp_launcher.exe`, `scripts\launch.ps1` or `nro`, which run without
   EasyAntiCheat. Never start `start_protected_game.exe` with mods present.
 - Back up `%APPDATA%\Nightreign` before you install. Mod sessions use Seamless Co-op's own save files, separate from the vanilla save.
 - Seamless Co-op is closed-source third-party software. This project does not modify or redistribute it: players install it themselves, and the mod only
