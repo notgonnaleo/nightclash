@@ -118,16 +118,22 @@ If the game crashes on quit (0xC0000374) it is the known bug; note the time and 
 
 ## 5b. Publish for the launcher app (LAUNCH-1)
 
-The launcher app (`crates/nrpvp-app`, `NightreignPvP.exe`) installs and updates the mod from GitHub releases of a **separate,
-public** repository, `aspherya/nightreign-pvp-releases` (since 2026-11-13). Source stays private in `aspherya/nightreign-pvp`: a
-release there would carry GitHub's automatic source-code archives, and a token able to read its releases could read its source. The
-releases repository holds only a README, the releases (`release.json`, `NightreignPvP.zip`, `NightreignPvP-Launcher.exe`) and the
-**download page** in `docs/` (static `index.html` + `site.css` on Bootstrap 5, theme tokens in `design/tokens.json` → `node
-design/build-tokens.mjs` → `docs/ui/tokens.css`; GitHub Pages from `main` `/docs`, https://aspherya.github.io/nightreign-pvp-releases/,
-since 2026-11-13; no game art, the copy sells Battle Royale and Arena as PvP). Its buttons link `releases/latest/download/NightreignPvP-Launcher.exe`, so a new release needs no page edit; the
-version line and "What's new" come from the GitHub API in the browser. That repository has no workflows: editing the page never builds
-or publishes a release (the build runs only on pushes to `main` here that touch shipped code). Releases v0.1.3
-and v0.1.7 were published in the source repository before the move; launchers of those versions keep looking there. One command
+The launcher app (`crates/nrpvp-app`, `NightreignPvP.exe`) installs and updates the mod from GitHub releases of **this public
+repository**, `notgonnaleo/nightreign-pvp` (since 2026-11-23, DECISIONS). Each release holds `release.json`,
+`NightreignPvP.zip` and `NightreignPvP-Launcher.exe` (plus GitHub's source archives, harmless now that the source is public).
+
+**Download page** in `docs/` here (moved from the legacy repository on 2026-11-23): static `index.html` + `site.css` on Bootstrap
+5, theme tokens in `design/tokens.json` → `node design/build-tokens.mjs` → `docs/ui/tokens.css`; GitHub Pages from `main` `/docs`,
+https://notgonnaleo.github.io/nightreign-pvp/ (no game art; the copy sells Battle Royale and Arena as PvP). Its buttons link
+`releases/latest/download/NightreignPvP-Launcher.exe`, so a new release needs no page edit; the version line and "What's new" come
+from the GitHub API in the browser (with no release yet they fall back to "Free · Windows"). Pushes that only touch `docs/` or
+`design/` never build a release (`paths-ignore`). Preview locally: `.claude/launch.json` config `download-page`.
+
+**Legacy releases repository** `aspherya/nightreign-pvp-releases` (2026-11-13 to 2026-11-23, up to v0.3.3): launchers up to v0.3.3
+have it built in, so CI mirrors every release there until those launchers are gone (§6); their auto-update brings in a launcher
+that reads this repository. Its old page, https://aspherya.github.io/nightreign-pvp-releases/, should only redirect to the new
+one. Launchers v0.1.3 and v0.1.7 read `aspherya/nightreign-pvp`, which GitHub now redirects here [HYPOTHESIS: they follow the
+redirect and see the new releases]. One command
 builds the zip, the launcher and `release.json`, and uploads them:
 
 ```powershell
@@ -157,7 +163,7 @@ installed mod is older than the latest published release** (both run the same co
   `NRPVP_RELEASES_REPO` work here too).
 - **Older, or no version at all** (a zip from before the gate): blocked. `nrpvp_launcher.exe` shows a box: "Your Nightreign PvP is
   vA, but vB is out ... open the launcher app (it updates by itself) or download the new NightreignPvP.zip from
-  `https://github.com/aspherya/nightreign-pvp-releases/releases/latest` and replace the files", with **Yes** = open that page. The app
+  `https://github.com/<releases repo>/releases/latest` and replace the files", with **Yes** = open that page. The app
   shows **Update required: vB** in red at the bottom with the Update button (the old "Play without updating" link is gone); if Play
   is pressed with a stale page, it shows the same message and turns to Update.
 - **Same or newer:** starts. **GitHub not reachable** (offline, the 60-per-hour limit, an error; 10 s limit per request): **does
@@ -175,35 +181,37 @@ installed mod is older than the latest published release** (both run the same co
 ### GitHub Actions release setup
 
 `.github/workflows/release.yml` runs on every push to **main** that changes more than docs, or **Actions > Build player release >
-Run workflow**. Pushes that only touch `.claude/**`, `*.md` or `scenarios/**` do not run: Windows runner minutes count double on a
-private repository, and a docs change needs no release. There is no CI on pull requests (removed 2026-11-13 to save minutes); run
-`cargo test` / `cargo clippy` locally before merging.
+Run workflow**. Pushes that only touch `.claude/**`, `*.md` or `scenarios/**` do not run: a docs change needs no release. There is
+no CI on pull requests (removed 2026-11-13 to save minutes while the repository was private; standard runners are free on a public
+one, so it could come back); run `cargo test` / `cargo clippy` locally before merging.
 
 One job, in order: tests and clippy in the **debug** profile (the release profile's thin LTO with one codegen unit is slow and only
 needed for shipped binaries); a release build of the launcher, helper and player DLL (no developer features) in one shared `target`
 folder (`NRPVP_PLAYER_TARGET_DIR`), so dependencies compile once; the pinned build inputs; `publish-release.ps1 -DryRun` packages
 `NightreignPvP.zip`, `NightreignPvP-Launcher.exe` and the SHA-256 `release.json`; `publish-ci-release.ps1` uploads them to a
-temporary **draft** and publishes it as the latest stable release only after every upload succeeds. `Swatinem/rust-cache` keeps
+temporary **draft** in this repository (built-in `GITHUB_TOKEN`) and publishes it as the latest stable release only after every
+upload succeeds; then the same script mirrors it to the legacy releases repository (`LEGACY_RELEASES_REPO` in the workflow,
+`RELEASES_PUBLISH_TOKEN`). The mirror runs after the main release: if it fails, the release is out here but old launchers miss it. `Swatinem/rust-cache` keeps
 compiled dependencies between runs. No workflow artifact is uploaded: the release holds the files. A manual run can keep the release
 a **draft** (players never see drafts). Never reuse a version or replace already-published assets. Update `releases/notes.txt` before merging.
 
 Runs with no explicit version take the higher of the workspace version (`Cargo.toml`) and one patch above the highest version ever
-used in the releases repository, drafts included, so versions always increase by one and a test draft's number is never reused. A minor
+used in this repository or the legacy one, drafts included, so versions always increase by one and a test draft's number is never reused. A minor
 or major step is a workspace version bump. (Until 2026-11-13 the run number was added to the patch, and the new repository restarted at
-0.1.x below the 0.2.0 that earlier testers had installed; the launcher refuses downgrades, so the workspace version went to 0.3.0.) An explicit manual version is used as given. A rerun can replace unpublished draft assets only when that
+0.1.x below the 0.2.0 that earlier testers had installed; the launcher refuses downgrades, so the workspace version went to 0.3.0;
+the move back to this repository on 2026-11-23 went to 0.4.0.) An explicit manual version is used as given. A rerun can replace unpublished draft assets only when that
 draft was built from the exact same commit (its body names the source commit); published releases cannot be overwritten.
-Tags in the releases repository point at its default branch, since the source commit does not exist there.
+Tags here point at the source commit; in the legacy repository at its default branch, since the commit does not exist there.
 
 One-time setup by the repository owner:
 
-1. Keep the source repository private and the releases repository **public**. Player releases go to
-   `aspherya/nightreign-pvp-releases` (override with the Actions variable `RELEASES_REPO`); the workflow embeds that name in the
-   launcher, which reads it without a token. Publishing refuses to run while the releases repository is not publicly readable. It
-   must have at least one commit (a README) so releases can be tagged. Build inputs stay as a draft in the source repository.
-   One Actions **secret** in `aspherya/nightreign-pvp`: `RELEASES_PUBLISH_TOKEN`, a fine-grained token, resource owner `aspherya`,
-   **Only select repositories > nightreign-pvp-releases**, Repository permissions **Contents: Read and write**, nothing else. Only
-   CI uses it to create and publish releases; the built-in `GITHUB_TOKEN` cannot write to another repository. Replace it before
-   it expires (an expired one only stops publishing; players keep working).
+1. Keep this repository **public**: player releases go here (`github.repository`; override with the Actions variable
+   `RELEASES_REPO`), the workflow embeds that name in the launcher, which reads it without a token, and publishing refuses to run
+   while the target is not publicly readable. Build inputs stay a **draft** here (never visible to the public). The built-in
+   `GITHUB_TOKEN` (workflow `contents: write`) publishes. Only the legacy mirror needs the Actions **secret**
+   `RELEASES_PUBLISH_TOKEN`: a fine-grained token, resource owner `aspherya`, **Only select repositories > nightreign-pvp-releases**,
+   Repository permissions **Contents: Read and write**, nothing else (the built-in token cannot write to another repository).
+   Replace it before it expires: an expired one fails the mirror step and old launchers stop getting updates.
 2. CI builds the game data itself on every release (`build-gamedata.ps1`, step **Build game data**), from pinned inputs: the
    original game 1.03.3 files it reads, WitchyBND, ESDLang 0.5.1, the Smithbox 2.2.6 DLLs and me3. Nothing is compiled to make them.
    On the machine holding the pinned game unpack and tools:
@@ -219,14 +227,14 @@ r-unpacked.03.3 -Witchy Z:\Tools\WitchyBND-3.0.1.0\WitchyBND.exe -EsdTool Z:\To
    `pins/ci-inputs.json` records the uploaded draft's release ID and SHA-256 (the only source CI uses).
    Unpublished draft tags do not resolve through the tag API, so CI downloads the asset by its pinned release ID.
    When regenerating inputs, upload a new draft and update that file with its ID and the new hash. Find a draft ID with
-   `gh api repos/aspherya/nightreign-pvp/releases --jq '.[] | select(.tag_name == "build-inputs-v1") | .id'`.
+   `gh api repos/notgonnaleo/nightreign-pvp/releases --jq '.[] | select(.tag_name == "build-inputs-v1") | .id'`.
    This bundle contains only the generated player
    game-data package and pinned me3 binaries/licenses, never Seamless Co-op or a game executable.
    Regenerate and update the hash when game-data sources/pins change. A hosted Windows runner cannot generate
    game content without the local unpack and tools. The currently installed Arena test package is not a player input.
    The current player input has 21 files, including `menu/05_000_title.gfx`. Regenerate older bundles to include the custom title background.
-3. The workflow's built-in `GITHUB_TOKEN` downloads the input draft from the source repository; `RELEASES_PUBLISH_TOKEN` creates
-   and publishes player releases in the releases repository.
+3. The workflow's built-in `GITHUB_TOKEN` downloads the input draft and creates and publishes the player release here;
+   `RELEASES_PUBLISH_TOKEN` only mirrors it to the legacy repository.
 4. Push the reviewed change to `main`. The workflow runs launcher/helper tests and player-DLL tests/lint, builds the complete
    package and publishes it. Failures leave the previous stable release active. To test without publishing, use a manual workflow
    run with **draft**, or build locally with `NRPVP_RELEASE_DIR`.
