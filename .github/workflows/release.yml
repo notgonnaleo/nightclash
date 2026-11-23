@@ -1,7 +1,7 @@
 name: Build player release
 
-# Every push to main that changes shipped code builds, tests and publishes a player release in this (public) repository, and
-# mirrors it to the legacy releases repository so launchers built before 2026-11-23 update to one that reads here (RELEASE.md §6).
+# Every push to main that changes shipped code builds, tests and publishes a player release in this (public) repository
+# (RELEASE.md §6).
 # Pushes that only touch docs or the download page (docs/, design/) do not run: they need no release.
 on:
   push:
@@ -38,9 +38,6 @@ jobs:
     env:
       # Player releases are releases of this repository; the launcher reads them without a token (RELEASE.md §5b).
       NRPVP_RELEASES_REPO: ${{ vars.RELEASES_REPO || github.repository }}
-      # Launchers up to v0.3.3 read this repository. Every release is copied there too (same assets, so their launcher updates
-      # to one that reads NRPVP_RELEASES_REPO). Delete this line and the "Mirror" step once no player runs such a launcher.
-      LEGACY_RELEASES_REPO: aspherya/nightreign-pvp-releases
       # One target folder for the launcher and the player DLL, so dependencies compile once (scripts/package-release.ps1).
       NRPVP_PLAYER_TARGET_DIR: target
       CARGO_TERM_COLOR: always
@@ -54,16 +51,11 @@ jobs:
         run: |
           $version = $env:REQUESTED_VERSION
           if (-not $version) {
-            # The workspace version, or one patch above the highest version ever used in the releases repository or the legacy
-            # one (drafts count, so a test draft's number is never reused), whichever is higher. Raise the workspace version for a
-            # minor or major step.
+            # The workspace version, or one patch above the highest version ever used in the releases repository (drafts count,
+            # so a test draft's number is never reused), whichever is higher. Raise the workspace version for a minor or major step.
             $version = [version][regex]::Match((Get-Content Cargo.toml -Raw), '(?m)^version\s*=\s*"(\d+\.\d+\.\d+)"').Groups[1].Value
             # ForEach-Object unrolls the JSON array the same way in Windows PowerShell 5.1 and pwsh 7.
             $releases = @(Invoke-RestMethod "https://api.github.com/repos/$env:NRPVP_RELEASES_REPO/releases?per_page=100" -Headers @{ Authorization = "Bearer $env:GH_TOKEN" } | ForEach-Object { $_ })
-            if ($env:LEGACY_RELEASES_REPO) {
-              # Public: readable without a token (the built-in one cannot see other repositories' drafts; they are never reused there).
-              $releases += @(Invoke-RestMethod "https://api.github.com/repos/$env:LEGACY_RELEASES_REPO/releases?per_page=100" | ForEach-Object { $_ })
-            }
             foreach ($r in $releases) {
               if ($r.tag_name -match '^v(\d+\.\d+\.\d+)$') {
                 $used = [version]$matches[1]
@@ -151,14 +143,3 @@ jobs:
         run: |
           ./scripts/publish-ci-release.ps1 -Repo $env:NRPVP_RELEASES_REPO -Version $env:RELEASE_VERSION -Commit $env:GITHUB_SHA -Draft:($env:KEEP_DRAFT -eq 'true')
           "Built v$env:RELEASE_VERSION from $env:GITHUB_SHA and published it to $env:NRPVP_RELEASES_REPO (draft: $env:KEEP_DRAFT)." >> $env:GITHUB_STEP_SUMMARY
-      - name: Mirror release to the legacy releases repository
-        if: env.LEGACY_RELEASES_REPO != ''
-        shell: pwsh
-        env:
-          # github.token cannot write to another repository: a fine-grained token with Contents: read and write on that one only.
-          GH_TOKEN: ${{ secrets.RELEASES_PUBLISH_TOKEN }}
-          KEEP_DRAFT: ${{ github.event_name == 'workflow_dispatch' && inputs.draft }}
-        run: |
-          if (-not $env:GH_TOKEN) { throw "The RELEASES_PUBLISH_TOKEN secret is missing: launchers up to v0.3.3 will not see v$env:RELEASE_VERSION (RELEASE.md §6)." }
-          ./scripts/publish-ci-release.ps1 -Repo $env:LEGACY_RELEASES_REPO -Version $env:RELEASE_VERSION -Commit $env:GITHUB_SHA -Draft:($env:KEEP_DRAFT -eq 'true')
-          "Mirrored v$env:RELEASE_VERSION to $env:LEGACY_RELEASES_REPO for old launchers." >> $env:GITHUB_STEP_SUMMARY
