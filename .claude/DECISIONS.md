@@ -230,4 +230,5 @@ launcher that reads the new one. Drop the mirror once no player runs such a laun
 The 2026-11-23 bridge (copy every release to `aspherya/nightreign-pvp-releases`) failed on its first run: the repository had been
 deleted. CI no longer mirrors or reads it, and needs no personal token (`RELEASES_PUBLISH_TOKEN` can be deleted). Consequence:
 players on a launcher up to v0.3.3 are stopped by the version gate and must download the new launcher from
-https://notgonnaleo.github.io/nightreign-pvp/ once. How-to: RELEASE.md §5b, §6.
+https://notgonnaleo.github.io/nightreign-pvp/ once. Leonardo tells them in the Discord announcements instead of recreating
+the old repository. How-to: RELEASE.md §5b, §6.
