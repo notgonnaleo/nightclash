@@ -10,8 +10,8 @@ queue from the game's own expedition menu.
 It runs on top of [Seamless Co-op](#requirements), with no anti-cheat and no connection to the official matchmaking servers. There is no
 server of ours and no overlay: players find each other through Steam lobbies, and everything on screen is the game's own menus and messages.
 
-> **Status: pre-release.** Battle Royale Solo and Arena 1v1 are playable and have been played over real Steam. Some of the newest
-> parts are only proven on one PC: see [What works today](#what-works-today).
+> **Status: pre-release.** Battle Royale Solo and Arena 1v1 are playable and have been played over real Steam. The current state of
+> every feature is in [STATUS.md](.claude/STATUS.md).
 
 **Contents:** [For players](#for-players) · [The rules](#the-rules) · [What works today](#what-works-today) ·
 [For developers](#for-developers) · [The test orchestrator (`nro`)](#the-test-orchestrator-nro) · [Project layout](#project-layout) ·
@@ -136,29 +136,8 @@ The full specification is in [PROJECT_SCOPE.md](.claude/re/PROJECT_SCOPE.md).
 
 ## What works today
 
-"One PC" means two real game instances with an emulated Steam, driven by [`nro`](#the-test-orchestrator-nro). Only a session on two PCs can
-prove real networking. The current state is always in [STATUS.md](.claude/STATUS.md).
-
-| Feature | Proven on | Open |
-|---|---|---|
-| PvP between players, rival marking | Two PCs, real Steam | |
-| Solo matchmaking and one-click install | Two PCs, real Steam (2 players, older build with one host click) | 6 players only in automated tests |
-| No click after Commence | One PC | Real Steam: the join link, and whether Steam shows a notification |
-| Battle Royale card | One PC | Two PCs |
-| Hawk crossing | One game | Two PCs |
-| Match rules: defeat, respawn, free Day 1, early win | One PC | Two PCs |
-| Spectating | Three instances under Nucleus | Camera smoothness |
-| Defeat drops, team runes, hidden rivals | One PC | Two PCs, Duo / Trio teammates |
-| Sites of Grace lock, killfeed | One PC | Two PCs |
-| Host migration (the game's own) | One PC | Real Steam |
-| Duo and Trio | A Duo party reaches an expedition, on one PC | The 3-team match, rules between teammates, Trio |
-| Arena 1v1 (rounds, clock and overtime, loadout, one ultimate per round) | Two PCs, real Steam; against a bot | Some Ultimate Arts do not hurt a rival; Duo / Trio |
-| Bots (offline practice) | One PC | |
-| Launcher app: install, auto-update, version check | Published releases | |
-
-**Not built yet:** the in-game password field for private matches (the launcher's Private room tab works instead), Arena Duo / Trio.
-
-**Known issues:** the game often crashes when quitting (heap corruption, cause unproven), and the table menu stays open during the departure.
+What works, what is proven where (real Steam or one PC), and what is still open lives in one place only:
+**[STATUS.md](.claude/STATUS.md)**. This README does not copy it, so it never goes stale here.
 
 ---
 
