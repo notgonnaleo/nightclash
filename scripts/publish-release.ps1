@@ -1,5 +1,5 @@
 # Publishes a player release for the launcher app (crates/nrpvp-app): builds the player zip and the launcher exe, writes release.json,
-# and uploads all three as a GitHub release in the releases repository (aspherya/nightreign-pvp-releases, never the source repo).
+# and uploads all three as a GitHub release of the public source repository (notgonnaleo/nightreign-pvp; RELEASE.md §5b).
 # The launcher downloads release.json via the GitHub release asset API; the latest stable release is what players get.
 #
 #   ./scripts/publish-release.ps1 -Version 0.2.0 -NotesFile notes.txt -DryRun     # build + write dist\release\, upload nothing
@@ -15,7 +15,7 @@ param(
     # Shown to players; must agree with the hashes in pins/nightreign.toml.
     [string]$GameVersion = '1.03.3',
     [string]$ScVersion = '1.1.3',
-    [string]$Repo = 'aspherya/nightreign-pvp-releases',
+    [string]$Repo = 'notgonnaleo/nightreign-pvp',
     [switch]$DryRun,
     [switch]$AllowDirty
 )

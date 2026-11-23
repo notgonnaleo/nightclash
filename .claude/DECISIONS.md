@@ -156,7 +156,7 @@ link, no passwords of our own, never needed to play. No rankings (no anti-cheat,
 (ASP.NET Core) on Leonardo's Lightsail with his Postgres; log files on disk, never in Postgres; no personal data by default (a random
 install id; Steam IDs in logs hashed by the launcher). Design: [CLOUD.md](CLOUD.md).
 
-## 2026-11-13 — Player releases live in their own public repository; the launcher needs no token (Leonardo)
+## 2026-11-13 — Player releases live in their own public repository; the launcher needs no token (Leonardo; releases part superseded 2026-11-23)
 
 Releases moved from `aspherya/nightreign-pvp` to `aspherya/nightreign-pvp-releases`: a release in the source repository ships
 GitHub's source archives, and a token that can read its releases can read its source. The releases repository is public, so the
@@ -213,3 +213,13 @@ updating" link let players into mismatched matches. Claude first proposed starti
 chose to block ("simply does not let the game open"). Accepted cost: a GitHub outage, or a shared IP over the 60-per-hour limit,
 stops every player until it passes. Zips built locally without `-Version` say `version local` and are never checked, so
 friend-test zips keep working; `NRPVP_SKIP_VERSION_CHECK=1` is the developer escape. How-to: RELEASE.md §5c.
+
+## 2026-11-23 — Releases go back into the source repository, now public at notgonnaleo/nightreign-pvp (Leonardo)
+
+Leonardo transferred the repository from `aspherya` to his account `notgonnaleo` and made it public, and asked that releases be
+published in it instead of `aspherya/nightreign-pvp-releases`. The 2026-11-13 reasons for a separate repository (source archives on
+every release, a token that reads releases reads source) no longer apply to a public repository. CI now publishes with the built-in
+`GITHUB_TOKEN` and tags the source commit; the build-inputs draft stays a draft (drafts are invisible to the public). The workspace
+version went to 0.4.0 so the first release here is above v0.3.3. **Bridge:** launchers up to v0.3.3 have the old repository built
+in, so every release is also mirrored there (`LEGACY_RELEASES_REPO`, needs `RELEASES_PUBLISH_TOKEN`); their auto-update installs a
+launcher that reads the new one. Drop the mirror once no player runs such a launcher. How-to: RELEASE.md §5b, §6.
