@@ -8,3 +8,6 @@ __pycache__/
 /tools/regulation/obj/
 /build.local.psd1
 /tools/local/
+
+# Local drop folder (friend-session logs, extracted game art); never commit game assets
+.claude/experiments/

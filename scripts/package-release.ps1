@@ -7,7 +7,7 @@
 #                                 messages, UI-1/UI-2; the hawk crossing line, HAWK-2; regulation.bin with the Battle Royale card
 #                                 row, UI-3); the launcher loads it as an me3 [[packages]] entry
 #   NightreignPvP\me3\...         bundled me3 0.11.0 (MIT / Apache-2.0), so nothing has to be installed
-#   HOW TO INSTALL.txt
+#   NightreignPvP\LICENSE.txt     our license (GPL-3.0-or-later; the repo's LICENSE); kept on the player's disk by the installer
 # R1: the zip gets a PLAYER nrpvp.dll, built here with `--no-default-features` (no developer tooling) into target\player\. The script
 #   also builds the launcher. (R5 removed the -MatchmakingTest developer zip with the debug panel; friend tests use this zip.)
 param(
@@ -88,11 +88,11 @@ Copy-Item -LiteralPath $dll -Destination $mod
 Copy-Item -LiteralPath $gamedata -Destination (Join-Path $mod 'gamedata') -Recurse
 Copy-Item -LiteralPath (Join-Path $Me3Dir 'bin\me3.exe'), (Join-Path $Me3Dir 'bin\me3-launcher.exe'), (Join-Path $Me3Dir 'bin\me3_mod_host.dll') -Destination $me3
 Copy-Item -LiteralPath (Join-Path $Me3Dir 'LICENSE-MIT'), (Join-Path $Me3Dir 'LICENSE-APACHE') -Destination $me3
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'release\HOW TO INSTALL.txt') -Destination $stage
+Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $mod 'LICENSE.txt')
 
 $ascii = New-Object Text.ASCIIEncoding
 $toml = @(
-    '# Nightreign PvP settings. You do not need to change anything here.',
+    '# Nightclash settings. You do not need to change anything here.',
     "team_size = $TeamSize",
     '# Solo Battle Royale matchmaking: table > Matchmaking Settings > Number of Players = Solo > Commence.',
     '# Arena: the Arena card > Number of Players = Solo > Commence: best of 3, 1 v 1.',
@@ -119,7 +119,16 @@ $gdHash = (Get-FileHash (Join-Path $gamedata 'event\m10_00_00_00.emevd.dcx') -Al
 $routeHash = (Get-FileHash $routes -Algorithm SHA256).Hash.Substring(0,16)
 $ver = "built $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm')) UTC, commit $commit ($dirty), nrpvp.dll $((Get-FileHash $dll -Algorithm SHA256).Hash.Substring(0,16)), gamedata emevd $gdHash, hawk routes $routeHash, me3 0.11.0"
 $versionLine = if ($Version) { "version $Version" } else { 'version local' }
-[IO.File]::WriteAllText((Join-Path $mod 'VERSION.txt'), $versionLine + "`r`n" + $ver + "`r`n", $ascii)
+# third line: where the source is (GPL-3.0 section 6: the source must be findable next to the binaries); the launcher reads only
+# the `version` line, so extra lines are safe
+# the repository: CI's GITHUB_REPOSITORY, else the git remote (so a repository rename needs no edit here)
+$repoSlug = $env:GITHUB_REPOSITORY
+if (-not $repoSlug) {
+    $origin = (& git -C $repo remote get-url origin 2>$null)
+    if ($origin -match 'github\.com[:/]([^/]+/[^/]+?)(\.git)?$') { $repoSlug = $Matches[1] } else { throw "Cannot tell the GitHub repository from the git remote '$origin'." }
+}
+$sourceLine = "source https://github.com/$repoSlug (GPL-3.0-or-later, see LICENSE.txt; the commit above is this build)"
+[IO.File]::WriteAllText((Join-Path $mod 'VERSION.txt'), $versionLine + "`r`n" + $ver + "`r`n" + $sourceLine + "`r`n", $ascii)
 
 $zipName = 'NightreignPvP.zip'
 $zip = Join-Path $dist $zipName

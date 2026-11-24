@@ -88,7 +88,7 @@ pub fn set_room_code(game: &Path, code: &str) -> Result<(), String> {
     let path = game.join(MOD_DIR).join(TOML);
     let text = fs::read_to_string(&path).map_err(|e| {
         format!(
-            "Could not read {}: {e}\n\nInstall Nightreign PvP first.",
+            "Could not read {}: {e}\n\nInstall Nightclash first.",
             path.display()
         )
     })?;
@@ -112,7 +112,7 @@ pub fn install_mod(
         let has = |n: &str| names.iter().any(|x| x.eq_ignore_ascii_case(n));
         if !has(&format!("{prefix}nrpvp.dll")) || !has("nrpvp_launcher.exe") {
             return Err(
-                "The downloaded zip is not a Nightreign PvP release (nrpvp.dll is missing).".into(),
+                "The downloaded zip is not a Nightclash release (nrpvp.dll is missing).".into(),
             );
         }
     }
@@ -382,7 +382,7 @@ mod tests {
         write_zip(&zip, &[("readme.txt", b"x")]);
         assert!(install_mod(&dir, &zip, &manifest(), |_, _| {})
             .unwrap_err()
-            .contains("not a Nightreign PvP release"));
+            .contains("not a Nightclash release"));
         let _ = fs::remove_dir_all(&dir);
     }
 

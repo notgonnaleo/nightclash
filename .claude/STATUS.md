@@ -38,7 +38,7 @@ item (SOLO-REVIVE), the most-kills tiebreak.
 
 | Place | What |
 |---|---|
-| Players | **v0.4.0**, the latest release of `notgonnaleo/nightreign-pvp` (2026-11-23, built by CI from `main` 92457fc): BR + Arena, 6 players with a 2-player minimum. Download page https://notgonnaleo.github.io/nightreign-pvp/ (Pages from `main` `/docs`). Its patch notes still repeat v0.3.x's text |
+| Players | **v0.4.0**, the latest release of `notgonnaleo/nightclash` (then `nightreign-pvp`; 2026-11-23, built by CI from `main` 92457fc): BR + Arena, 6 players with a 2-player minimum. Download page https://notgonnaleo.github.io/nightclash/ (Pages from `main` `/docs`; the old `/nightreign-pvp/` address is dead since the 2026-11-24 rename). Its patch notes still repeat v0.3.x's text |
 | Old launchers (v0.3.3 and older) | Point at the deleted `aspherya/nightreign-pvp-releases`: the gate stops them ("Could not check for updates"). Leonardo tells players on Discord to download the new launcher once (DECISIONS 2026-11-23) |
 | This checkout's `dist\` after `scripts\build.ps1` | Dev build for `launch.ps1` and `nro` |
 
@@ -55,7 +55,7 @@ normal expeditions (Leonardo has an idea). No match timer: the tide closes to a 
 
 ## 4. Repository state
 
-- **`notgonnaleo/nightreign-pvp`, public** (moved from `aspherya` on 2026-11-23). PRs go to `dev`; merging `dev` into `main` publishes a
+- **`notgonnaleo/nightclash`, public** (moved from `aspherya` on 2026-11-23; renamed from `nightreign-pvp` on 2026-11-24, GitHub redirects the old name: never create a repository called `nightreign-pvp` again). PRs go to `dev`; merging `dev` into `main` publishes a
   release by itself unless only docs, `scenarios/`, `docs/` or `design/` changed (RELEASE.md §6). Update `releases/notes.txt` first.
 - **Only `dev` and `main` exist** (2026-11-23). Every older local branch (73, incl. unmerged ones such as `launcher-app`, `arena-0-spike`,
   `claude/nro-suite`, `claude/n6-headless-twins`) is in `..\nightreign-pvp-branch-backup-2026-11-23.bundle` next to the checkout;

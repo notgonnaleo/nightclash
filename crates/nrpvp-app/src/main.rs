@@ -246,9 +246,9 @@ async fn install_mod(app: AppHandle) -> Result<String, String> {
             &m,
             &m.zip,
             &zip,
-            reporter(&app, "Downloading Nightreign PvP"),
+            reporter(&app, "Downloading Nightclash"),
         )?;
-        install::install_mod(&game, &zip, &m, reporter(&app, "Installing Nightreign PvP"))?;
+        install::install_mod(&game, &zip, &m, reporter(&app, "Installing Nightclash"))?;
         let _ = std::fs::remove_file(&zip);
         Ok(m.version)
     })
