@@ -82,7 +82,7 @@ always pass it), else `version local`, a test zip the gate never blocks.
 ### What is in the zip
 `nrpvp_launcher.exe`, `HOW TO INSTALL.txt` (the player instructions, from `scripts\release\`), and `NightreignPvP\` with `nrpvp.dll`,
 `nrpvp.toml`, `VERSION.txt`, `gamedata\` (15 languages + the Roundtable event script + the hawk line `map\mapstudio\m60_00_00_99.msb.dcx`;
-the script refuses an incomplete set) and `me3\` (3 binaries + 2 licences). If you change player-visible rules, update
+the script refuses an incomplete set), `me3\` (3 binaries + 2 licences) and `LICENSE.txt` (our GPL-3.0 license, from the repo's `LICENSE`). If you change player-visible rules, update
 `scripts\release\HOW TO INSTALL.txt` in the same change (it still describes Solo queue only, which is right today).
 
 ## 4. Hand it over and test with one friend (2 players, Solo)

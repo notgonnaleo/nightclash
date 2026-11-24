@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/flame-dark.svg">
+    <img src="docs/brand/flame-light.svg" alt="Flame icon" width="140">
+  </picture>
+</p>
+
 # NIGHTREIGN PVP
 
 A PvP mod for **ELDEN RING NIGHTREIGN** with two modes: **Battle Royale**, where players land on Limveld as rivals, fight each other
@@ -360,5 +367,17 @@ the data channel between games in `net/`.
 - Back up `%APPDATA%\Nightreign` before you install. Mod sessions use Seamless Co-op's own save files, separate from the vanilla save.
 - Seamless Co-op is closed-source third-party software. This project does not modify or redistribute it: players install it themselves, and the mod only
   works alongside it at run time.
-- This is an unofficial fan project, not affiliated with or endorsed by FromSoftware, Bandai Namco or the author of Seamless Co-op. Use it at your own risk.
-- The crates declare `MIT OR Apache-2.0` in `Cargo.toml`. me3 is bundled in the player zip under its own license files.
+- This is an unofficial, free, non-commercial fan project, not affiliated with or endorsed by FromSoftware, Bandai Namco or the author of
+  Seamless Co-op. ELDEN RING NIGHTREIGN is a trademark of its owners, and you need your own copy of the game on Steam. Use the mod at your own risk.
+
+## License
+
+The code in this repository is licensed under the **GNU General Public License v3.0 or later** ([LICENSE](LICENSE)). You may use, change and
+share it; any version you share, changed or not, must stay open source under the same license.
+
+The license covers only this project's own work. It does not cover content that belongs to others:
+
+- **The game's content** belongs to FromSoftware and Bandai Namco: its art, and the data in `gamedata/` and in the game-data package that is
+  taken from or based on the game's files. The flame icon at the top of this README is based on an icon from the game.
+- **me3**, bundled in the player zip, keeps its own license (MIT / Apache-2.0); its license files ship with it.
+- **Seamless Co-op** is not part of this repository or the player zip.

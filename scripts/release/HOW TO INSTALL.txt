@@ -99,3 +99,12 @@ UNINSTALL
 ---------
 Delete "nrpvp_launcher.exe" and the "NightreignPvP" folder from the game folder.
 Nothing else was changed.
+
+
+LICENSE AND SOURCE CODE
+-----------------------
+This mod is free software under the GNU General Public License v3.0 or later
+("NightreignPvP\LICENSE.txt"). Its source code is at
+https://github.com/notgonnaleo/nightreign-pvp ; "NightreignPvP\VERSION.txt" names the
+exact commit this zip was built from. me3 keeps its own license (in "NightreignPvP\me3").
+The game's content belongs to FromSoftware and Bandai Namco.

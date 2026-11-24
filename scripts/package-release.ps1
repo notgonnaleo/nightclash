@@ -7,6 +7,7 @@
 #                                 messages, UI-1/UI-2; the hawk crossing line, HAWK-2; regulation.bin with the Battle Royale card
 #                                 row, UI-3); the launcher loads it as an me3 [[packages]] entry
 #   NightreignPvP\me3\...         bundled me3 0.11.0 (MIT / Apache-2.0), so nothing has to be installed
+#   NightreignPvP\LICENSE.txt     our license (GPL-3.0-or-later; the repo's LICENSE); kept on the player's disk by the installer
 #   HOW TO INSTALL.txt
 # R1: the zip gets a PLAYER nrpvp.dll, built here with `--no-default-features` (no developer tooling) into target\player\. The script
 #   also builds the launcher. (R5 removed the -MatchmakingTest developer zip with the debug panel; friend tests use this zip.)
@@ -89,6 +90,7 @@ Copy-Item -LiteralPath $gamedata -Destination (Join-Path $mod 'gamedata') -Recur
 Copy-Item -LiteralPath (Join-Path $Me3Dir 'bin\me3.exe'), (Join-Path $Me3Dir 'bin\me3-launcher.exe'), (Join-Path $Me3Dir 'bin\me3_mod_host.dll') -Destination $me3
 Copy-Item -LiteralPath (Join-Path $Me3Dir 'LICENSE-MIT'), (Join-Path $Me3Dir 'LICENSE-APACHE') -Destination $me3
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'release\HOW TO INSTALL.txt') -Destination $stage
+Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $mod 'LICENSE.txt')
 
 $ascii = New-Object Text.ASCIIEncoding
 $toml = @(

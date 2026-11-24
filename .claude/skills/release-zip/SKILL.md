@@ -35,7 +35,7 @@ rewrites the handler's settings, logs go to `dist\nucleus-logs\`).
 - The zip holds `nrpvp_launcher.exe`, `HOW TO INSTALL.txt`, and `NightreignPvP\` with `nrpvp.dll`, `nrpvp.toml`, `VERSION.txt`,
   `gamedata\` (17 files: 15 languages + the Roundtable event script + the hawk crossing line `map\mapstudio\m60_00_00_99.msb.dcx`, HAWK-2;
   since BOT-5 (2026-11-06) `event\common.emevd.dcx` with the bot events goes into the zip as it is (players use Bots On);
-  the VERSION line names its hash as `hawk routes`) and `me3\` (3 binaries + 2 licences). The script refuses an incomplete
+  the VERSION line names its hash as `hawk routes`), `me3\` (3 binaries + 2 licences) and `LICENSE.txt` (GPL-3.0, from the repo's `LICENSE`). The script refuses an incomplete
   `gamedata`; still list the archive once.
 - `nrpvp.toml` in the zip has no `dev_mode = true` (a player DLL would ignore it anyway, with a warning).
 - Never install the zip into Leonardo's game folder yourself; installing is his step (STATUS §2 notes this each time).
