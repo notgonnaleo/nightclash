@@ -1,7 +1,7 @@
-Arena fixes and a version check
+Nightreign PvP is now Nightclash
 
-- An Arena round now ends when a player's HP drops to 1. Nobody goes down any more, so the loser no longer dies at the start of the next round and no level is lost.
-- Arena rounds have a clock: a "One minute left!" message, then at the 3-minute limit an overtime of up to 60 seconds where both players slowly lose HP; the first to reach 1 HP loses the round.
-- The launcher no longer starts an old version of the mod. Update through the launcher app (it does it by itself) or download the new zip. It checks for the latest version before every start, so it needs an internet connection.
+- New name, same mod: the launcher, the download page and the project are now called Nightclash. Nothing changes in your game, your saves or your settings, and the launcher keeps updating as before.
+- New download page: https://notgonnaleo.github.io/nightclash/ (the old page address no longer works).
+- Nightclash is open source under the GNU GPL v3 license. The license now comes with the mod (NightreignPvP\LICENSE.txt), and the source code is at https://github.com/notgonnaleo/nightclash.
 
 Everyone in a match needs the same mod version. This player build supports up to 6 players and starts with at least 2 after the fill wait.
