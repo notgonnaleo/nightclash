@@ -80,10 +80,11 @@ always pass it), else `version local`, a test zip the gate never blocks.
 **Build from a clean `main`** so the zip's commit is a real commit (the line says `dirty` otherwise).
 
 ### What is in the zip
-`nrpvp_launcher.exe`, `HOW TO INSTALL.txt` (the player instructions, from `scripts\release\`), and `NightreignPvP\` with `nrpvp.dll`,
+`nrpvp_launcher.exe` and `NightreignPvP\` with `nrpvp.dll`,
 `nrpvp.toml`, `VERSION.txt`, `gamedata\` (15 languages + the Roundtable event script + the hawk line `map\mapstudio\m60_00_00_99.msb.dcx`;
-the script refuses an incomplete set), `me3\` (3 binaries + 2 licences) and `LICENSE.txt` (our GPL-3.0 license, from the repo's `LICENSE`). If you change player-visible rules, update
-`scripts\release\HOW TO INSTALL.txt` in the same change (it still describes Solo queue only, which is right today).
+the script refuses an incomplete set), `me3\` (3 binaries + 2 licences) and `LICENSE.txt` (our GPL-3.0 license, from the repo's `LICENSE`). `VERSION.txt` has three lines: the version, the
+build line (time, commit, hashes) and a `source` line with the repository link (GPL: the source must be findable next to the
+binaries). There is no separate install note in the zip any more (removed 2026-11-24): the launcher and the download page explain it.
 
 ## 4. Hand it over and test with one friend (2 players, Solo)
 
