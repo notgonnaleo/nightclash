@@ -242,12 +242,7 @@ async fn install_mod(app: AppHandle) -> Result<String, String> {
         }
         let m = release::latest()?;
         let zip = work_dir()?.join(&m.zip.name);
-        release::fetch_asset(
-            &m,
-            &m.zip,
-            &zip,
-            reporter(&app, "Downloading Nightclash"),
-        )?;
+        release::fetch_asset(&m, &m.zip, &zip, reporter(&app, "Downloading Nightclash"))?;
         install::install_mod(&game, &zip, &m, reporter(&app, "Installing Nightclash"))?;
         let _ = std::fs::remove_file(&zip);
         Ok(m.version)
