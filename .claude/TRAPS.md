@@ -139,3 +139,7 @@ Read when you touch the area named in a bullet, or before debugging something od
   the repository now allows merge commits only (DECISIONS 2026-11-13).
 - **A release version below the installed one never reaches that player** (2026-11-13): the launcher refuses downgrades, and the
   new releases repository restarted at 0.1.x below the 0.2.0 testers had. Raise the workspace version instead (RELEASE.md §6).
+- **A text search-and-replace in Rust code breaks the release's format check** (2026-11-24): the Nightclash rename shortened
+  strings, so rustfmt wanted two wrapped calls on one line; `cargo fmt --all --check` failed the first release build on `main`
+  and no release was published. There is no CI on pull requests: after any bulk edit run the README's "Checks before a
+  commit" (fmt, both clippy runs, tests) before the PR, and update `releases/notes.txt` before merging into `main`.

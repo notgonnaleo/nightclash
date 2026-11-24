@@ -383,11 +383,7 @@ mod tests {
     use super::*;
     #[test]
     fn authenticated_asset_urls_stay_on_github_and_escape_tag_paths() {
-        let url = github_url(
-            "notgonnaleo/nightclash",
-            &["releases", "tags", "v1/extra"],
-        )
-        .unwrap();
+        let url = github_url("notgonnaleo/nightclash", &["releases", "tags", "v1/extra"]).unwrap();
         assert_eq!(url.host_str(), Some("api.github.com"));
         assert!(url.path().ends_with("v1%2Fextra"));
         for repo in [
