@@ -1,7 +1,7 @@
 //! nrpvp_launcher.exe: the one file a player double-clicks in the game folder. The work is in the library (lib.rs).
 #![windows_subsystem = "windows"]
 
-const TITLE: &str = "Nightreign PvP";
+const TITLE: &str = "Nightclash";
 
 #[link(name = "user32")]
 extern "system" {

@@ -171,13 +171,13 @@ pub fn decide(installed: &Installed, latest: Result<&str, &str>) -> Gate {
 /// What the player reads when the gate blocks, in words they can act on. `page` = where the new zip is.
 pub fn blocked_message(installed: Option<&Version>, latest: &Version, page: &str) -> String {
     let what = match installed {
-        Some(v) => format!("Your Nightreign PvP is v{v}, but v{latest} is out."),
-        None => format!("Your Nightreign PvP is an old version (v{latest} is out)."),
+        Some(v) => format!("Your Nightclash version is v{v}, but v{latest} is out."),
+        None => format!("Your Nightclash is an old version (v{latest} is out)."),
     };
     format!(
         "{what} Everyone in a match needs the same version, so the game will not start with this one.\n\n\
          To update, do one of these:\n\
-         - Open the Nightreign PvP launcher app (NightreignPvP.exe): it updates the mod by itself, then press Play.\n\
+         - Open the Nightclash launcher app (NightreignPvP.exe): it updates the mod by itself, then press Play.\n\
          - Or download the new NightreignPvP.zip from {page} and drag its files into the game folder (choose \"Replace the files\")."
     )
 }
@@ -185,7 +185,7 @@ pub fn blocked_message(installed: Option<&Version>, latest: &Version, page: &str
 /// What the player reads when the latest version could not be learnt (`why` = what went wrong, in player words).
 pub fn unknown_message(why: &str) -> String {
     format!(
-        "Nightreign PvP could not check for the latest version, so the game will not start.\n\n{why}\n\n\
+        "Nightclash could not check for the latest version, so the game will not start.\n\n{why}\n\n\
          The game only starts after this check (everyone in a match needs the same version). Connect to the internet and try again."
     )
 }

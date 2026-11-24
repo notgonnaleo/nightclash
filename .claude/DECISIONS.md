@@ -232,3 +232,28 @@ deleted. CI no longer mirrors or reads it, and needs no personal token (`RELEASE
 players on a launcher up to v0.3.3 are stopped by the version gate and must download the new launcher from
 https://notgonnaleo.github.io/nightreign-pvp/ once. Leonardo tells them in the Discord announcements instead of recreating
 the old repository. How-to: RELEASE.md §5b, §6.
+
+## 2026-11-24 — Public name Nightclash; repository renamed, internal names kept (Leonardo)
+
+The project's public name is **Nightclash** (chosen over Nightrivals, Nightfall, Nightmare and keeping "Nightreign PvP"),
+applied in one go the same day: the GitHub repository is `notgonnaleo/nightclash` (was `notgonnaleo/nightreign-pvp`), the
+download page is https://notgonnaleo.github.io/nightclash/ (the old page address is dead: GitHub does not redirect project
+Pages), and the README title, the launcher app's window and texts, the old launcher's title and version-gate messages and the
+download page say Nightclash. **Kept on purpose:** crate names (`nrpvp`, `nro`, `nrcon`), `NightreignPvP.exe`,
+`nrpvp_launcher.exe`, `NightreignPvP.zip`, `NightreignPvP-Launcher.exe`, the `NightreignPvP\` install folder (the installer and
+version gate depend on it), the Tauri app identifier (`io.github.notgonnaleo.nightreignpvp`, the app's install identity) and
+external accounts (YouTube `@nightreignpvp`, Discord). Launchers built before the rename have the old repository name built in
+and reach the new one through GitHub's redirect, so **no repository may ever be created as `notgonnaleo/nightreign-pvp`**
+(that would end the redirect and cut them off, as the deleted releases repository did on 2026-11-23). The release scripts read
+the repository name from CI or the git remote, so a future rename needs no script edit. The README shows a flame icon (`docs/brand/flame-light.svg` / `flame-dark.svg`): the silhouette of a game menu icon
+(`MENU_MenuIcon_40411`), so it is FromSoftware's art, not ours; Leonardo plans to redraw it by hand.
+
+## 2026-11-24 — License: GPL-3.0-or-later (Leonardo)
+
+The code is licensed under GPL-3.0-or-later (`LICENSE`, `Cargo.toml` `workspace.package.license`), replacing the `MIT OR
+Apache-2.0` that `Cargo.toml` declared without a license file. Why: Nightclash is an end-user mod, and copies people share must
+stay open source; the comparable fan PvP project Twelve Weeks uses GPL-3.0 too. Checked before switching: all Rust dependencies
+are GPL-3.0-compatible (MIT, Apache-2.0, BSD, ISC, Zlib, MPL-2.0, CDLA-Permissive), me3 ships in the zip as a separate program
+under its own MIT / Apache-2.0 license files, and Seamless Co-op is not bundled. The license does not cover the game's content
+(its art and the data in `gamedata/` and the game-data package taken from or based on its files); the README's License section
+says so. Relicensing later needs every outside contributor's consent.

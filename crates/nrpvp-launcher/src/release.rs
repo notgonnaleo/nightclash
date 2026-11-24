@@ -1,8 +1,8 @@
 //! Where releases come from, and the `release.json` manifest that describes one. Shared by the launcher app (install, updates)
 //! and by [`crate::launch`]'s version gate ([`crate::version`]), so both ask GitHub the same way.
 //!
-//! Player releases are GitHub releases of the **public** source repository ([`RELEASES_REPO`], `notgonnaleo/nightreign-pvp`,
-//! since 2026-11-23; before that `aspherya/nightreign-pvp-releases`). Every release carries three assets: `release.json` (this
+//! Player releases are GitHub releases of the **public** source repository ([`RELEASES_REPO`], `notgonnaleo/nightclash`,
+//! named `notgonnaleo/nightreign-pvp` from 2026-11-23 to 2026-11-24, GitHub redirects the old name; before that `aspherya/nightreign-pvp-releases`). Every release carries three assets: `release.json` (this
 //! manifest), the player zip, and the launcher exe. GitHub release/asset API requests download the manifest and assets without
 //! a token (never send one: an expired token gets 401 even on a public repository); their SHA-256 is checked before install.
 //! `scripts\publish-ci-release.ps1` uploads the release from CI.
@@ -19,7 +19,7 @@ use sha2::{Digest, Sha256};
 
 pub const RELEASES_REPO: &str = match option_env!("NRPVP_RELEASES_REPO") {
     Some(repo) => repo,
-    None => "notgonnaleo/nightreign-pvp",
+    None => "notgonnaleo/nightclash",
 };
 /// Seamless Co-op for Nightreign, by Yui. The GitHub repository holds only data files today (no releases); the mod itself is
 /// published on Nexus Mods. The launcher installs from a GitHub release if one ever appears, else guides the Nexus download.
@@ -384,7 +384,7 @@ mod tests {
     #[test]
     fn authenticated_asset_urls_stay_on_github_and_escape_tag_paths() {
         let url = github_url(
-            "notgonnaleo/nightreign-pvp",
+            "notgonnaleo/nightclash",
             &["releases", "tags", "v1/extra"],
         )
         .unwrap();
