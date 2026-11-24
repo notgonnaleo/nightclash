@@ -1,5 +1,5 @@
 # Publishes a player release for the launcher app (crates/nrpvp-app): builds the player zip and the launcher exe, writes release.json,
-# and uploads all three as a GitHub release of the public source repository (notgonnaleo/nightreign-pvp; RELEASE.md §5b).
+# and uploads all three as a GitHub release of the public source repository (notgonnaleo/nightclash; RELEASE.md §5b).
 # The launcher downloads release.json via the GitHub release asset API; the latest stable release is what players get.
 #
 #   ./scripts/publish-release.ps1 -Version 0.2.0 -NotesFile notes.txt -DryRun     # build + write dist\release\, upload nothing
@@ -15,11 +15,13 @@ param(
     # Shown to players; must agree with the hashes in pins/nightreign.toml.
     [string]$GameVersion = '1.03.3',
     [string]$ScVersion = '1.1.3',
-    [string]$Repo = 'notgonnaleo/nightreign-pvp',
+    # Default: the GitHub repository of the git remote `origin` (so a repository rename needs no edit here).
+    [string]$Repo = $(if ((& git -C (Split-Path $PSScriptRoot -Parent) remote get-url origin 2>$null) -match 'github\.com[:/]([^/]+/[^/]+?)(\.git)?$') { $Matches[1] } else { '' }),
     [switch]$DryRun,
     [switch]$AllowDirty
 )
 $ErrorActionPreference = 'Stop'
+if (-not $Repo) { throw 'Cannot tell the GitHub repository from the git remote origin; pass -Repo owner/name.' }
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $dist = Join-Path $repoRoot 'dist'
 $out = Join-Path $dist 'release'

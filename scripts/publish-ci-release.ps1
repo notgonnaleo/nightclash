@@ -42,7 +42,7 @@ $release = $matching | Select-Object -First 1
 if ($release) {
     if (-not $release.draft -or -not "$($release.body)".Contains($sourceLine)) { throw 'This version is published or was built from another commit. Choose a new version.' }
 } else {
-    $body = @{tag_name=$tag;target_commitish=$target;name="Nightreign PvP $tag";body="$($manifest.notes)`n`n$sourceLine";draft=$true;prerelease=$false} | ConvertTo-Json -Depth 4
+    $body = @{tag_name=$tag;target_commitish=$target;name="Nightclash $tag";body="$($manifest.notes)`n`n$sourceLine";draft=$true;prerelease=$false} | ConvertTo-Json -Depth 4
     $release = Invoke-RestMethod "$api/releases" -Method Post -Headers $headers -ContentType 'application/json' -Body $body
 }
 foreach ($name in @($manifest.zip.name, $manifest.launcher.name, 'release.json')) {

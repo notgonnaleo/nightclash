@@ -1,4 +1,4 @@
-// Nightreign PvP launcher UI. Talks to the Rust side (src/main.rs) through Tauri commands; the Rust side never takes a URL or a
+// Nightclash launcher UI. Talks to the Rust side (src/main.rs) through Tauri commands; the Rust side never takes a URL or a
 // path to open from here except paths the player picked in a dialog. Opened in a plain browser (no Tauri), it runs on a mock so the
 // look can be checked without building.
 'use strict';
@@ -119,7 +119,7 @@ function render() {
       d.gameOk ? st.game_dir + (d.gameMatch === false ? ' — a different game version than this release was built for' : '') : 'Not found'),
     row(d.scOk ? (d.scMatch === false ? 'warn' : 'ok') : 'bad', 'Seamless Co-op',
       d.scOk ? (d.scMatch === false ? `Installed, but not v${r.seamless_coop.version} (the version this release needs)` : `Installed${r ? ' · v' + r.seamless_coop.version : ''}`) : 'Not installed'),
-    row(d.modOk ? (d.update ? 'warn' : 'ok') : 'bad', 'Nightreign PvP',
+    row(d.modOk ? (d.update ? 'warn' : 'ok') : 'bad', 'Nightclash',
       d.modOk ? (d.modVersion ? 'v' + d.modVersion : d.localBuild ? 'Local test build' : 'Installed by hand (unknown version)') + (d.update ? ` · v${r.version} required` : '') : (st.mod && st.mod.present ? st.mod.problem : 'Not installed')),
   ].join('') + (d.newLauncher ? row('warn', 'New launcher available', 'Restart the launcher to retry the automatic update, or download it from Settings › All releases.') : '')
     + (st.foreign && st.foreign.length ? row('bad', 'Files from another tool in the game folder',
@@ -136,7 +136,7 @@ function render() {
     dot.className = 'dot bad'; text.textContent = !d.gameOk ? 'Game folder not found' : 'Seamless Co-op is not installed';
     sub.textContent = 'Setup walks you through it.'; btn.disabled = false; label.textContent = 'Set up';
   } else if (!d.modOk) {
-    dot.className = 'dot bad'; text.textContent = st.mod && st.mod.present ? 'The mod install is incomplete' : 'Nightreign PvP is not installed';
+    dot.className = 'dot bad'; text.textContent = st.mod && st.mod.present ? 'The mod install is incomplete' : 'Nightclash is not installed';
     sub.textContent = r ? `v${r.version} · ${mb(r.zip.size)}` : (S.releaseError || 'Looking for the latest release…');
     btn.disabled = !r; label.textContent = st.mod && st.mod.present ? 'Repair' : 'Install';
   } else if (d.update) {
@@ -153,7 +153,7 @@ function render() {
   } else {
     dot.className = 'dot ok';
     text.textContent = st.game_running ? 'The game is running' : 'Ready to play';
-    sub.textContent = [d.modVersion ? 'Nightreign PvP v' + d.modVersion : 'Nightreign PvP', r ? 'Seamless Co-op v' + r.seamless_coop.version : 'Seamless Co-op']
+    sub.textContent = [d.modVersion ? 'Nightclash v' + d.modVersion : 'Nightclash', r ? 'Seamless Co-op v' + r.seamless_coop.version : 'Seamless Co-op']
       .join(' · ') + (d.gameMatch === false ? ' · the game was updated: the mod may not work until a new release' : '') + (S.releaseError ? ' · offline' : '');
     btn.disabled = !!st.game_running; label.textContent = 'Play';
   }
@@ -249,7 +249,7 @@ function renderWizard() {
     } else {
       h += `<div class="card warn"><h4>No release found</h4><p class="muted" style="margin:0">${esc(S.releaseError || 'Looking…')}</p><div class="row"><button class="btn" id="wzRetry">Try again</button></div></div>`;
     }
-    if (d.modOk && !d.update) h = `<div class="field"><span class="mark ok"></span><span><b>Nightreign PvP is installed</b><small>${d.modVersion ? 'v' + esc(d.modVersion) : 'installed by hand'}</small></span></div>` + h;
+    if (d.modOk && !d.update) h = `<div class="field"><span class="mark ok"></span><span><b>Nightclash is installed</b><small>${d.modVersion ? 'v' + esc(d.modVersion) : 'installed by hand'}</small></span></div>` + h;
     $('#wzMod').innerHTML = h;
     $('#wzRetry') && ($('#wzRetry').onclick = loadRelease);
     if (d.modOk && !d.update) { next.textContent = 'Continue'; next.disabled = !!S.busy; }
@@ -310,7 +310,7 @@ async function job(label, fn, okMsg) {
 }
 function setBar(frac) { $$('.js-bar').forEach((b) => (b.style.width = Math.round(frac * 1000) / 10 + '%')); }
 
-const installMod = () => job('Installing Nightreign PvP…', () => invoke('install_mod'), 'Nightreign PvP is installed.');
+const installMod = () => job('Installing Nightclash…', () => invoke('install_mod'), 'Nightclash is installed.');
 
 async function findScZip() {
   const path = await invoke('find_sc_zip').catch((e) => { toast(String(e)); return null; });

@@ -120,12 +120,14 @@ If the game crashes on quit (0xC0000374) it is the known bug; note the time and 
 ## 5b. Publish for the launcher app (LAUNCH-1)
 
 The launcher app (`crates/nrpvp-app`, `NightreignPvP.exe`) installs and updates the mod from GitHub releases of **this public
-repository**, `notgonnaleo/nightreign-pvp` (since 2026-11-23, DECISIONS). Each release holds `release.json`,
+repository**, `notgonnaleo/nightclash` (since 2026-11-23; named `nightreign-pvp` until the 2026-11-24 rename, DECISIONS). CI builds
+the launcher with this repository's name (`NRPVP_RELEASES_REPO` = `github.repository`); launchers built before the rename ask for
+`notgonnaleo/nightreign-pvp` and reach this repository through GitHub's redirect. Each release holds `release.json`,
 `NightreignPvP.zip` and `NightreignPvP-Launcher.exe` (plus GitHub's source archives, harmless now that the source is public).
 
 **Download page** in `docs/` here (moved from the legacy repository on 2026-11-23): static `index.html` + `site.css` on Bootstrap
 5, theme tokens in `design/tokens.json` → `node design/build-tokens.mjs` → `docs/ui/tokens.css`; GitHub Pages from `main` `/docs`,
-https://notgonnaleo.github.io/nightreign-pvp/ (no game art; the copy sells Battle Royale and Arena as PvP). Its buttons link
+https://notgonnaleo.github.io/nightclash/ (no game art; the copy sells Battle Royale and Arena as PvP). Its buttons link
 `releases/latest/download/NightreignPvP-Launcher.exe`, so a new release needs no page edit; the version line and "What's new" come
 from the GitHub API in the browser (with no release yet they fall back to "Free · Windows"). Pushes that only touch `docs/` or
 `design/` never build a release (`paths-ignore`). Preview locally: `.claude/launch.json` config `download-page`.
@@ -162,7 +164,7 @@ installed mod is older than the latest published release** (both run the same co
 - **Installed version:** the `version X.Y.Z` line of `NightreignPvP\VERSION.txt`; if that file has none, the version the app recorded
   in `NightreignPvP\release.json`. **Latest:** the newest stable release's `release.json` (GitHub, no token; `NRPVP_RELEASE_DIR` /
   `NRPVP_RELEASES_REPO` work here too).
-- **Older, or no version at all** (a zip from before the gate): blocked. `nrpvp_launcher.exe` shows a box: "Your Nightreign PvP is
+- **Older, or no version at all** (a zip from before the gate): blocked. `nrpvp_launcher.exe` shows a box: "Your Nightclash version is
   vA, but vB is out ... open the launcher app (it updates by itself) or download the new NightreignPvP.zip from
   `https://github.com/<releases repo>/releases/latest` and replace the files", with **Yes** = open that page. The app
   shows **Update required: vB** in red at the bottom with the Update button (the old "Play without updating" link is gone); if Play
@@ -225,7 +227,7 @@ r-unpacked.03.3 -Witchy Z:\Tools\WitchyBND-3.0.1.0\WitchyBND.exe -EsdTool Z:\To
    `pins/ci-inputs.json` records the uploaded draft's release ID and SHA-256 (the only source CI uses).
    Unpublished draft tags do not resolve through the tag API, so CI downloads the asset by its pinned release ID.
    When regenerating inputs, upload a new draft and update that file with its ID and the new hash. Find a draft ID with
-   `gh api repos/notgonnaleo/nightreign-pvp/releases --jq '.[] | select(.tag_name == "build-inputs-v1") | .id'`.
+   `gh api repos/notgonnaleo/nightclash/releases --jq '.[] | select(.tag_name == "build-inputs-v1") | .id'`.
    This bundle contains only the generated player
    game-data package and pinned me3 binaries/licenses, never Seamless Co-op or a game executable.
    Regenerate and update the hash when game-data sources/pins change. A hosted Windows runner cannot generate
@@ -285,5 +287,5 @@ Steam synchronize it. This imports the local Steam save, not a direct Steam Clou
 | Launcher says Seamless Co-op was not found | player must install SC v1.1.3 first |
 | Players never meet | different `-MatchPlayers`, different mod build, different SC version, or different `private_code` |
 | The zip's commit says `dirty` | build from a clean `main` for a session you want to be reproducible |
-| "Your Nightreign PvP is vA, but vB is out" | the version gate (§5c): update through the launcher app or the new zip; a friend-test zip must be built without `-Version` (`version local`) |
+| "Your Nightclash version is vA, but vB is out" (older launchers: "Your Nightreign PvP is vA ...") | the version gate (§5c): update through the launcher app or the new zip; a friend-test zip must be built without `-Version` (`version local`) |
 | "could not check for the latest version" / "Could not check for updates" | no internet, GitHub down, or GitHub's 60-per-hour limit for that IP (§5c, "How the launcher reads releases"): connect, or wait and retry |

@@ -5,14 +5,16 @@
   </picture>
 </p>
 
-# NIGHTREIGN PVP
+# NIGHTCLASH
+
+*Formerly Nightreign PvP.*
 
 A PvP mod for **ELDEN RING NIGHTREIGN** with two modes: **Battle Royale**, where players land on Limveld as rivals, fight each other
 and the map's enemies, and the last player or team standing wins; and **Arena**, a best-of-three duel in Heolstor's arena. Players
 queue from the game's own expedition menu.
 
-**Download:** https://notgonnaleo.github.io/nightreign-pvp/ (the launcher), or the
-[latest release](https://github.com/notgonnaleo/nightreign-pvp/releases/latest).
+**Download:** https://notgonnaleo.github.io/nightclash/ (the launcher), or the
+[latest release](https://github.com/notgonnaleo/nightclash/releases/latest).
 
 It runs on top of [Seamless Co-op](#requirements), with no anti-cheat and no connection to the official matchmaking servers. There is no
 server of ours and no overlay: players find each other through Steam lobbies, and everything on screen is the game's own menus and messages.
@@ -39,7 +41,7 @@ The mod brings its own copy of [me3](https://github.com/garyttierney/me3), the m
 ### Install with the launcher (recommended)
 
 1. Back up `%APPDATA%\Nightreign`, where the saves live.
-2. Download **`NightreignPvP-Launcher.exe`** from the [download page](https://notgonnaleo.github.io/nightreign-pvp/) and run it.
+2. Download **`NightreignPvP-Launcher.exe`** from the [download page](https://notgonnaleo.github.io/nightclash/) and run it.
 3. Follow its first-run steps: it finds the game folder, opens Seamless Co-op's Nexus page if it is missing and installs the zip you
    download, then installs the mod.
 
@@ -48,7 +50,7 @@ The launcher keeps itself and the mod up to date: on each start, with the game c
 ### Install by hand
 
 1. Back up `%APPDATA%\Nightreign`.
-2. Download `NightreignPvP.zip` from the [latest release](https://github.com/notgonnaleo/nightreign-pvp/releases/latest).
+2. Download `NightreignPvP.zip` from the [latest release](https://github.com/notgonnaleo/nightclash/releases/latest).
 3. In Steam, right-click the game > **Manage** > **Browse local files**, then open `Game`. It is the folder with `nightreign.exe` and
    `nrsc_launcher.exe`.
 4. If an older version is there, delete `nrpvp_launcher.exe` and the `NightreignPvP` folder.
@@ -92,10 +94,10 @@ Optional. Add them to `NightreignPvP\nrpvp.toml` (the launcher's **Private room*
 
 ### If something goes wrong
 
-- **"Update required" or "Your Nightreign PvP is vA, but vB is out":** let the launcher update, or download the new zip.
+- **"Update required" or "Your Nightclash version is vA, but vB is out":** let the launcher update, or download the new zip.
 - **"Could not check for updates" / "could not check for the latest version":** the mod needs the internet to start. If you have it and
   your launcher is v0.3.3 or older, that launcher looks in a place that no longer exists: download the new one from the
-  [download page](https://notgonnaleo.github.io/nightreign-pvp/).
+  [download page](https://notgonnaleo.github.io/nightclash/).
 - **"This launcher must be in the game folder":** the files are in the wrong place. Go back to [Install by hand](#install-by-hand), step 3.
 - **"Seamless Co-op was not found":** install Seamless Co-op first.
 - **The game does not start:** make sure Steam is running.

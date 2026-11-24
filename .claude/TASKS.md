@@ -178,7 +178,7 @@ launcher exe's box offers the download page; the app's dock shows "Update requir
 `package-release.ps1 -Version` writes `version X.Y.Z` (publish passes it), without it `version local`. Unit tests: comparison,
 `VERSION.txt` parsing, latest / outdated / unknown / local decisions.
 Acceptance (HUMAN-solo, game installed with a zip that has the gate; needs internet; ~10 min, no match needed):
-1. Note the latest release on https://github.com/notgonnaleo/nightreign-pvp/releases/latest (vB).
+1. Note the latest release on https://github.com/notgonnaleo/nightclash/releases/latest (vB).
 2. Edit `<Game>\NightreignPvP\VERSION.txt`: first line `version 0.0.1`. Double-click `nrpvp_launcher.exe` → a box "Your Nightreign
    PvP is v0.0.1, but vB is out" with Yes/No, the game does **not** start; `NightreignPvP\launcher.log` = `version gate: BLOCKED`.
    Yes opens the releases page.

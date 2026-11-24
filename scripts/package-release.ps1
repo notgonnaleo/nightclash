@@ -92,7 +92,7 @@ Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $mod 
 
 $ascii = New-Object Text.ASCIIEncoding
 $toml = @(
-    '# Nightreign PvP settings. You do not need to change anything here.',
+    '# Nightclash settings. You do not need to change anything here.',
     "team_size = $TeamSize",
     '# Solo Battle Royale matchmaking: table > Matchmaking Settings > Number of Players = Solo > Commence.',
     '# Arena: the Arena card > Number of Players = Solo > Commence: best of 3, 1 v 1.',
@@ -121,7 +121,13 @@ $ver = "built $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm')) UTC, 
 $versionLine = if ($Version) { "version $Version" } else { 'version local' }
 # third line: where the source is (GPL-3.0 section 6: the source must be findable next to the binaries); the launcher reads only
 # the `version` line, so extra lines are safe
-$sourceLine = 'source https://github.com/notgonnaleo/nightreign-pvp (GPL-3.0-or-later, see LICENSE.txt; the commit above is this build)'
+# the repository: CI's GITHUB_REPOSITORY, else the git remote (so a repository rename needs no edit here)
+$repoSlug = $env:GITHUB_REPOSITORY
+if (-not $repoSlug) {
+    $origin = (& git -C $repo remote get-url origin 2>$null)
+    if ($origin -match 'github\.com[:/]([^/]+/[^/]+?)(\.git)?$') { $repoSlug = $Matches[1] } else { throw "Cannot tell the GitHub repository from the git remote '$origin'." }
+}
+$sourceLine = "source https://github.com/$repoSlug (GPL-3.0-or-later, see LICENSE.txt; the commit above is this build)"
 [IO.File]::WriteAllText((Join-Path $mod 'VERSION.txt'), $versionLine + "`r`n" + $ver + "`r`n" + $sourceLine + "`r`n", $ascii)
 
 $zipName = 'NightreignPvP.zip'
