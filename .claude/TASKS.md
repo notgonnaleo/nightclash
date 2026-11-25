@@ -538,8 +538,10 @@ Friend Session with 4+ players plays a 2v2 and, with 6, a 3v3 (TESTING §6). The
 ### ARENA-6 — Arena: watch the team after a beating; Duo / Trio against bots (Leonardo 2026-11-24; DECISIONS of that date)
 Owner: OPUS | Status: **built on branch `arena-duo-trio`**; hidden-body lab done (2026-11-25, testing-log: the disable hides only on
 its own game and freezes the body's position for the others, so the body is hidden on the far bench before it follows); open: a 2v2
-on four instances PASS played by hand (2026-11-25, testing-log `2026-11-25-arena-duo-spectate`); open: a Duo match against bots, the
-switch inputs, Trio | Depends on: ARENA-5
+on four instances PASS played by hand (2026-11-25, testing-log `2026-11-25-arena-duo-spectate`); Trio against bots PARTIAL (2026-11-25,
+v0.4.2, testing-log `2026-11-25-arena-trio-bots`): round 1 3v3 fine, **round 2 got 1 of 3 new enemies** (the handle of the bot not
+needed in the first fill came back on a new bot, which was skipped as old; fixed after the run, unit test only); open: a Trio re-run with the fix, a Duo match against
+bots, the spectate against bots, the switch inputs | Depends on: ARENA-5
 Built: `Do::Bench` became `Do::Spectate`: frozen, flags 10007521 (event 99100921: no collision, no gravity) and 10007522 (event
 99100922: Change Character Enable State Disabled) ON while watching (`spectating_now`: from the beating to the reset; saved flags,
 written on a session's first tick), the body teleported onto a living teammate (player or bot ally) every tick (`pick_watch`, mouse
