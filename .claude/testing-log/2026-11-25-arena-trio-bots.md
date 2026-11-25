@@ -29,3 +29,19 @@ Game 1.03.3 (exe 1.3.3.0), SC 1.1.3, me3 0.11.0, player build (`mode=br`). Bots 
 - Log wording only: a bot killed by LOCAL is logged `last attacker 0x...10C00000 = Rival` (LOCAL, from the bot's side) and the
   scoreboard says `Bot n is gone (a bot replaced after a mob's kill)` for every dead Arena bot.
 - No ERROR or panic. Heartbeat slowest tick 40-180 ms (same range as 2026-11-20).
+
+### 2026-11-25 (re-run) — Arena Trio vs bots with the refill fix (Leonardo, dev DLL from branch `ultrawide` = dca2c1f, contains 423ffdb). Log: `dist\nrpvp.log`, session started 23:22:47 UTC: **PASS**
+
+Game 1.03.3 (exe 1.3.3.0), SC 1.1.3, me3 0.11.0, `scripts\launch.ps1` (profile sc), developer build. Bots On, Arena card, Trio,
+Commence at 23:23:53. `ultrawide: on (exe+0x1B8B286 74 -> EB)` at startup (UW-1 on by default).
+
+- **PASS: first fill** as on 2026-11-25: enemy slots 0, 1, 2 and ally slots 1, 2 (`5 of 5`), the 6th bot (0x...0B) `not needed; sent
+  away`, `sides: LOCAL + 2 teammate(s) vs 3 rival(s)`, `Round 1: fight!` 23:24:41.
+- **PASS: the refill (the bug of the first run).** Round 1 won 1-0 (23:26:25), `3 bot(s) dead; new ones`, then `round 4: kept bot
+  0x...0B (slot 0); 3 of 5; Arena enemy slot 0`: the handle of the bot sent away in the first fill came back on a new bot and was
+  kept this time; slots 1 and 2 filled too (`5 of 5`), the extra bot 0x...11 sent away, `vs 3 rival(s)`, `Round 2: fight!` 23:26:31.
+- **PASS: match end.** `Round 2: you won (2-0)`, `match over, WIN 2-0`, `expedition over; 8 bot(s) were kept`. The game was closed
+  before the Roundtable, so `summary shown` was not reached (the summary of 7 rows was waiting).
+- No ERROR or panic; 19 WARN = LOCAL's spawn move refused for about 1 s at the resets (known, then moved).
+- **Not covered:** the team spectate against bots (LOCAL was never beaten), a loss, a Duo match against bots. No killfeed line for a
+  bot's death: by design in the Arena (`fill.rs` ARENA-4 filter; the round toasts say who won).
