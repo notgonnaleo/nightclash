@@ -1,0 +1,201 @@
+name = "mi-arena-hide-lab"
+about = "ARENA-6 lab: can a living player be hidden for the team spectate? Two instances start an Arena 1v1 (as mi-arena-queue). Once round 1 is armed, instance 1 turns on its ghost flag 10007521 (no collision, no gravity) and its hide flag 10007522 (Change Character Enable State Disabled), moves itself with tp, then turns both off. Screenshots from both games at each stage show whether instance 2 still sees player 1 and whether instance 1's camera follows its moved body"
+tags = ["mi", "lab"]
+teardown = "keep"   # the games stay up for a look by hand; finish with nro stop --all
+# Two emulated-Steam instances: Steam closed, `nro desk` running, the PC untouched while it runs. Needs the dev DLL and the game data
+# with events 99100921 / 99100922 (scripts\build-gamedata.ps1). Run: nro run scenarios\mi-arena-hide-lab.toml
+
+[config]            # every instance, as mi-zero-click
+team_size = 1
+ui_flag_watch = false
+mm_probe = true
+mm_queue = true
+mm_match_players = 2
+mm_join = true
+mm_quiet_invite = true
+mm_auto_start = true
+br_menu = true
+mm_host_create = false
+
+[[instance]]
+n = 1
+role = "host"
+
+[[instance]]
+n = 2
+role = "client"
+
+[[step]]
+instance = 1
+navigate = "title_to_world"
+
+[[step]]
+instance = 2
+navigate = "title_to_world"
+
+# Instance 1 queues first, so it owns the queue lobby. The player's way: at the table, F opens the menu, DOWN to the Arena card, F
+# picks it, F is Commence, F closes our dialog.
+[[step]]
+instance = 1
+navigate = "queue_arena"
+
+[[step]]
+instance = 1
+wait = { console = "mm_status", contains = "searching", timeout_s = 20 }
+
+[[step]]
+instance = 1
+expect_log = { contains = ["queue Arena Solo (sent)", "kind=arena"], since = "run" }
+
+[[step]]
+instance = 2
+navigate = "queue_arena"
+
+[[step]]
+instance = 1
+mark = "pressed"
+
+[[step]]
+instance = 2
+mark = "pressed"
+
+# From here on no key and no click: only watching.
+[[step]]
+instance = 1
+wait = { console = "status", contains = ["world loaded, 2 player(s)", "team_type 2"], timeout_s = 240, every_ms = 2000 }
+
+[[step]]
+instance = 2
+wait = { console = "status", contains = ["world loaded, 2 player(s)", "team_type 2"], timeout_s = 90, every_ms = 2000 }
+
+[[step]]
+instance = 1
+wait_log = { contains = ["arena: flag 10007500 ON"], timeout_s = 60, since = "mark:pressed" }
+
+[[step]]
+instance = 2
+wait_log = { contains = ["arena: flag 10007500 ON"], timeout_s = 60, since = "mark:pressed" }
+
+[[step]]
+instance = 1
+wait_log = { contains = ["arena: roster team"], timeout_s = 90, since = "mark:pressed" }
+
+[[step]]
+instance = 2
+wait_log = { contains = ["arena: roster team"], timeout_s = 90, since = "mark:pressed" }
+
+[[step]]
+instance = 1
+wait_log = { contains = ["arena_rounds: everyone up: a down counts from now"], timeout_s = 60, since = "mark:pressed" }
+
+[[step]]
+instance = 1
+keys = "wait 2000ms"
+
+[[step]]
+instance = 1
+console = "players_pos"
+
+[[step]]
+instance = 2
+console = "players_pos"
+
+[[step]]
+instance = 1
+screenshot = "p1_before"
+
+[[step]]
+instance = 2
+screenshot = "p2_before"
+
+# The ghost alone: no collision, no gravity (player 1 should still be drawn on both games).
+[[step]]
+instance = 1
+console = "flag 10007521 1"
+
+[[step]]
+instance = 1
+keys = "wait 1500ms"
+
+[[step]]
+instance = 2
+screenshot = "p2_ghost"
+
+# The hide: Change Character Enable State Disabled on player 1's own game.
+[[step]]
+instance = 1
+console = "flag 10007522 1"
+
+[[step]]
+instance = 1
+keys = "wait 2000ms"
+
+[[step]]
+instance = 1
+screenshot = "p1_hidden"
+
+[[step]]
+instance = 2
+screenshot = "p2_hidden"
+
+[[step]]
+instance = 2
+console = "players_pos"
+
+# A move while hidden: does player 1's camera follow its body, and does player 2 see anything at the new place?
+[[step]]
+instance = 1
+console = "tp 0 3 8"
+
+[[step]]
+instance = 1
+keys = "wait 2000ms"
+
+[[step]]
+instance = 1
+console = "pos"
+
+[[step]]
+instance = 1
+screenshot = "p1_hidden_moved"
+
+[[step]]
+instance = 2
+screenshot = "p2_hidden_moved"
+
+[[step]]
+instance = 2
+console = "players_pos"
+
+# Both off: player 1 back, on the floor.
+[[step]]
+instance = 1
+console = "flag 10007522 0"
+
+[[step]]
+instance = 1
+console = "flag 10007521 0"
+
+[[step]]
+instance = 1
+keys = "wait 2500ms"
+
+[[step]]
+instance = 1
+console = "pos"
+
+[[step]]
+instance = 1
+screenshot = "p1_back"
+
+[[step]]
+instance = 2
+screenshot = "p2_back"
+
+[[step]]
+instance = 2
+console = "players_pos"
+
+[[step]]
+instance = 1
+expect_log = { contains = ["teleport: LOCAL to world"], absent = ["spawn move failed"], since = "mark:pressed" }

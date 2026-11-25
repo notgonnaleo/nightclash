@@ -36,7 +36,8 @@ Argument packing (DarkScript3 nr-common.emedf.json, checked against the file): 3
 0:0 = s8 group, u8 state, s8 target group, pad; 1:0 = s8 group, pad3, f32 seconds; 3:26 = s8 group, u8 world type, pad2;
 1003:1 = u8 lines, u8 state, u8 type, pad, u32 flag; 1001:0 = f32 seconds; 2004:8 = s32 entity, s32 SpEffect; 2004:47 = none;
 2004:5 and 2004:1 = s32 entity, u8 state, pad3; 1003:2 = u8 end type, u8 state, u8 type, pad, u32 flag; 2000:2 = u8 state, pad3;
-2007:19 = s32 TextEffect param id.
+2007:19 = s32 TextEffect param id; 2004:10 and 2004:39 = s32 entity, u8 state, pad3 (as 2004:5).
+ARENA-6: "char_switch": [[bank, id, state while ON], ...] with "flag" (and "secs"): see char_switch_instrs.
 """
 import json, struct, sys
 
@@ -137,6 +138,23 @@ def immortal_instrs(ev):
     ]
 
 
+def char_switch_instrs(ev):
+    """ARENA-6: a per-game switch of character states of the local player (10000). `char_switch` lists [bank, id, state while ON];
+    each is an instruction with the layout s32 entity, u8 state, pad3 (2004:5 Change Character Enable State, 2004:10 Set Character
+    Gravity, 2004:39 Change Character Collision State: 0 Disabled, 1 Enabled). While our flag is ON they are applied and re-applied
+    every `secs`; when it goes OFF each gets the other state (1 - state), then the event restarts. The DLL owns the flag."""
+    flag, lines = ev['flag'], ev['char_switch']
+    out = [(2000, 2, struct.pack('<B3x', 0)), flag_cond(MAIN, True, flag)]
+    out += [(b, i, struct.pack('<iB3x', 10000, s)) for b, i, s in lines]
+    out += [
+        (1001, 0, struct.pack('<f', float(ev.get('secs', 0.5)))),
+        (1003, 2, struct.pack('<BBBxI', 1, 1, 0, flag)),         # still ON: restart (apply again)
+    ]
+    out += [(b, i, struct.pack('<iB3x', 10000, 1 - s)) for b, i, s in lines]
+    out.append((1000, 4, struct.pack('<B3x', 1)))
+    return out
+
+
 def mirror_instrs(ev):
     """RW-5 verdict transport: while the local flag `from` is ON the network-connected flag `to` is ON in every game, OFF when it goes
     OFF. One game's DLL sets `from` (a local write there); every game's DLL reads `to`. Then the event restarts."""
@@ -234,6 +252,8 @@ def build_event_instrs(ev):
         return speffect_instrs(ev)
     if ev.get('immortal'):
         return immortal_instrs(ev)
+    if 'char_switch' in ev:
+        return char_switch_instrs(ev)
     if ev.get('heal') or 'ending' in ev:
         return local_instrs(ev)
     flag, msg, kind = ev['flag'], ev.get('message'), ev.get('display')

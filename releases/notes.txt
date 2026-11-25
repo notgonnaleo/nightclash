@@ -4,4 +4,11 @@ Nightreign PvP is now Nightclash
 - New download page: https://notgonnaleo.github.io/nightclash/ (the old page address no longer works).
 - Nightclash is open source under the GNU GPL v3 license. The license now comes with the mod (NightreignPvP\LICENSE.txt), and the source code is at https://github.com/notgonnaleo/nightclash.
 
+Arena
+
+- Arena Duo (2v2) and Trio (3v3): pick Duo or Trio on the Arena card. A round ends when a whole team is beaten.
+- When you are beaten and a teammate is still fighting, your camera follows your teammates until the round ends (mouse buttons or D-pad left / right switch who you watch). The other players see you standing far off on your team's side.
+- Bots On with Duo or Trio on the Arena card: you and bot allies against a bot team, offline.
+- Fixed: a player could start the next round where the last one ended (sometimes next to the enemy team) and then jump to their spawn.
+
 Everyone in a match needs the same mod version. This player build supports up to 6 players and starts with at least 2 after the fill wait.

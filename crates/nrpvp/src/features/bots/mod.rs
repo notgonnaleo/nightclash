@@ -289,16 +289,20 @@ impl Feature for BotsFeature {
         }
         self.arena_track = track;
         if over {
-            crate::mm::set_arena_bots(false);
+            crate::mm::set_arena_bots(0);
         }
         self.fill.set_bots_match(bots_match());
         self.fill.set_arena(fill::ArenaIn {
             on: arena_on && !over,
+            size: crate::mm::arena_bots_size(),
             placed,
             events: crate::game::arenarounds::bot_events(),
         });
         self.fill.step(now, super::mode::current(), world, ctx);
-        crate::game::arenarounds::set_arena_bot(self.fill.arena_bot());
+        crate::game::arenarounds::set_arena_bots(
+            self.fill.arena_bots(),
+            self.fill.arena_all_ready(),
+        );
         PENDING.store(self.fill.pending(), std::sync::atomic::Ordering::Relaxed);
         if self.fill.take_over() {
             set_bots_match(false);
