@@ -477,6 +477,9 @@ impl BotFill {
             .bots
             .map(|b| [b.heads[0], b.heads[1]])
             .unwrap_or([EMPTY; 2]);
+        if world.bots.is_some() {
+            self.release_extras(slots);
+        }
         match self.stage {
             Stage::Idle => {
                 tracing::info!(
@@ -723,6 +726,21 @@ impl BotFill {
             tracing::info!("bots: hunt: bot 0x{handle:X} is {d:.0} m away; bringing it near LOCAL");
             ctx.bot_writes.push(BotWrite::Hunt { chr, handle });
         }
+    }
+
+    /// A bot not needed leaves its slot with the clear (`2003[98]`), and the game may give its handle to a later new bot: Leonardo's
+    /// Trio match against bots (2026-11-25, testing-log `2026-11-25-arena-trio-bots`) had 0x...0B, not needed in the first fill, back
+    /// in slot 0 at the round 2 refill; it was skipped as already handled and the refill brought 1 of 3 enemies. So once a bot not
+    /// needed is out of both slots it is forgotten, and the same handle in a slot later counts as a new bot.
+    fn release_extras(&mut self, slots: [u64; 2]) {
+        let handled = &mut self.handled;
+        self.extra.retain(|(h, _)| {
+            let still = slots.contains(h);
+            if !still {
+                handled.retain(|x| x != h);
+            }
+            still
+        });
     }
 
     fn arm(&mut self, n: usize, now: u64, ctx: &mut Ctx) {
@@ -1703,6 +1721,90 @@ mod tests {
                 slot: 1
             })
         );
+    }
+
+    /// Leonardo's Trio match of 2026-11-25: the bot not needed in the first fill is cleared, and its handle comes back in a slot at the
+    /// refill after three enemies died. It is a new bot: kept, so the refill brings all three enemies.
+    #[test]
+    fn a_trio_refill_keeps_a_new_bot_on_the_handle_of_a_cleared_one() {
+        let trio = |r, s, dec| ArenaIn {
+            size: 3,
+            ..arena_in(r, s, dec)
+        };
+        let mut d = BotFill::new(0, 29);
+        d.set_arena(trio(0, 0, 0));
+        let mut ctx = Ctx::default();
+        d.step(0, GameMode::BattleRoyale, &world([E, E]), &mut ctx);
+        assert_eq!(d.want(), 5);
+        // Three table rounds: 2 + 2 + 1 kept; 0xA5 is not needed and stays in slot 1 for the clear.
+        let mut chrs = Vec::new();
+        let mut t = 0;
+        for pair in [[0xA0, 0xA1], [0xA2, 0xA3], [0xA4, 0xA5]] {
+            chrs.extend(pair.iter().map(|h| arena_bot(*h, 900, 60.0)));
+            let mut w = world(pair);
+            w.bot_chrs = chrs.clone();
+            t += 50;
+            d.step(t, GameMode::BattleRoyale, &w, &mut Ctx::default());
+            t += ROUND_GAP_MS;
+            d.step(t, GameMode::BattleRoyale, &w, &mut Ctx::default());
+        }
+        assert_eq!(d.stage, Stage::Done);
+        assert_eq!(d.kept.len(), 5);
+        // The clear removed 0xA5; the three enemies (0xA0..0xA2) die in round 1.
+        chrs.retain(|b| b.handle != 0xA5);
+        for b in chrs.iter_mut().take(3) {
+            b.hp = 0;
+        }
+        let mut w = world([E, E]);
+        w.bot_chrs = chrs.clone();
+        d.step(3_000, GameMode::BattleRoyale, &w, &mut Ctx::default());
+        d.set_arena(trio(1, 0, 0));
+        d.step(3_100, GameMode::BattleRoyale, &w, &mut Ctx::default());
+        d.set_arena(trio(1, 1, 0));
+        d.step(8_000, GameMode::BattleRoyale, &w, &mut Ctx::default());
+        let mut ctx = Ctx::default();
+        d.step(8_050, GameMode::BattleRoyale, &w, &mut ctx);
+        assert_eq!(ctx.flags, vec![(ARENA_TABLE.1, true)]);
+        // The refill: the game hands out 0xA5 again with 0xA6; both are new and kept.
+        chrs.push(arena_bot(0xA5, 900, 60.0));
+        chrs.push(arena_bot(0xA6, 900, 60.0));
+        let mut w = world([0xA5, 0xA6]);
+        w.bot_chrs = chrs.clone();
+        let mut ctx = Ctx::default();
+        d.step(8_100, GameMode::BattleRoyale, &w, &mut ctx);
+        let forgets: Vec<&BotWrite> = ctx
+            .bot_writes
+            .iter()
+            .filter(|b| matches!(b, BotWrite::ForgetSlot(_)))
+            .collect();
+        assert_eq!(
+            forgets,
+            [&BotWrite::ForgetSlot(0), &BotWrite::ForgetSlot(1)]
+        );
+        // One more round for the third enemy; its slot mate is not needed.
+        let mut ctx = Ctx::default();
+        d.step(8_100 + ROUND_GAP_MS, GameMode::BattleRoyale, &w, &mut ctx);
+        assert_eq!(ctx.flags, vec![(ARENA_TABLE.1, true)]);
+        chrs.push(arena_bot(0xA7, 900, 60.0));
+        chrs.push(arena_bot(0xA8, 900, 60.0));
+        let mut w = world([0xA7, 0xA8]);
+        w.bot_chrs = chrs;
+        for at in [8_150, 8_200] {
+            d.step(
+                at + ROUND_GAP_MS,
+                GameMode::BattleRoyale,
+                &w,
+                &mut Ctx::default(),
+            );
+        }
+        let enemies: Vec<u64> = d
+            .arena_bots()
+            .iter()
+            .filter(|b| !b.ally && !b.out)
+            .map(|b| b.handle)
+            .collect();
+        assert_eq!(enemies, vec![0xA5, 0xA6, 0xA7]);
+        assert_eq!(d.active(), 5);
     }
 
     #[test]
