@@ -24,11 +24,12 @@ Two modes ship together in every release: **Battle Royale** (`MODE-01`) and **Ar
 | Private room (`private_code`, set in the launcher's Private room tab) | **Works on two instances**; not seen on real Steam |
 | Bots, offline practice: Bots On + Solo + a card = BR against 5 AI Nightfarers, or Arena against one level-13 bot | **PASS on one PC**; Leonardo played both |
 | **Arena 1v1:** Heolstor's arena, best of 3, level 15, Sparring loadout at max upgrade (saved loadouts at the Sparring Equipment), consumables and a full ultimate every round (one ultimate per round), round ends at 1 HP (no down), 3-minute clock, "One minute left!", 60 s overtime HP drain | **Played on real Steam** (2026-11-11/12/15/17, Leonardo + friends) on builds up to 0.3.x, which still had the get-up bug. The current rules (1 HP end, clock, overtime, one ultimate) PASS on one PC and against the bot (2026-11-17); **not yet seen on real Steam** |
+| **Arena Duo / Trio (2v2, 3v3):** the round ends when a whole team is at 1 HP; a beaten player watches from the team's bench; a leaver's team plays on (DECISIONS 2026-11-24) | **2v2 PASS on four instances** (2026-11-24, branch `arena-duo-trio`); Trio and real Steam open |
 | Launcher app `NightreignPvP-Launcher.exe` (install wizard, Seamless Co-op via Nexus, auto-update of itself and the mod, Private room) and the version gate (an old mod or no version check = no start, LAUNCH-GATE) | **In use by players since v0.1.41**; LAUNCH-GATE's human acceptance is open (TASKS) |
 | Orchestrator `nro` (puppets, keys, screenshots, scenarios, 2-3 instances) | **Works** ([orchestrator/SCENARIOS.md](orchestrator/SCENARIOS.md)) |
 | Own networking (`net::bus`) | **Built** (NET-1/2); replacing Seamless Co-op is a study ([NETWORKING.md](NETWORKING.md)) |
 
-**Not built yet:** Arena Duo / Trio, the in-game password field (the launcher tab replaces it for now), Solo die-at-once with a revive
+**Not built yet:** the in-game password field (the launcher tab replaces it for now), Solo die-at-once with a revive
 item (SOLO-REVIVE), the most-kills tiebreak.
 
 **Known bugs:** the game crashes on quit (0xC0000374, heap corruption) on most runs since 2026-10-10, not proven to be Seamless Co-op's

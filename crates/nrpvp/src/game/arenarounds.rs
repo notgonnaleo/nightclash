@@ -157,7 +157,7 @@ pub(crate) enum Phase {
     Off,
     /// LOCAL stands on its spawn behind the black screen since `at_ms`.
     Starting { at_ms: u64 },
-    /// A round is on; `armed` once both players have been seen up (a down before that is the last round's).
+    /// A round is on; `armed` once every player has been seen up (a down before that is the last round's).
     Fighting { armed: bool },
     /// The round ended with a down at `at_ms`; `lost` = LOCAL went down; `stage` counts the steps done (fade out, reset).
     RoundOver { lost: bool, at_ms: u64, stage: u8 },
@@ -174,6 +174,8 @@ pub(crate) enum Do {
     FadeOut,
     FadeIn,
     FadeInFrozen,
+    /// ARENA-5: LOCAL is beaten while a teammate still fights: frozen (screen on) and moved to its team's bench to watch the round.
+    Bench,
     Revive,
     Reset,
     /// The host's verdict on a timed-out bout (key, outcome from the host's side) for the other game.
@@ -211,24 +213,51 @@ pub(crate) enum Outcome {
 }
 
 impl Outcome {
-    /// The bus value from the host's side (1 won, 2 lost, 3 draw).
-    pub(crate) fn wire(self) -> u32 {
-        match self {
+    /// The bus value from the host's side: bits 0..8 the host's outcome (1 won, 2 lost, 3 draw); ARENA-5: bits 8.. the host's roster
+    /// team + 1 (0 = unknown), so the host's teammates take the host's outcome and only the rivals take the opposite.
+    pub(crate) fn wire(self, host_team: Option<u8>) -> u32 {
+        let o = match self {
             Outcome::Won => 1,
             Outcome::Lost => 2,
             Outcome::Draw => 3,
-        }
+        };
+        o | host_team.map_or(0, |t| (u32::from(t) + 1) << 8)
     }
 
-    /// The other game's outcome from the host's bus value.
-    pub(crate) fn from_host_wire(v: u32) -> Option<Outcome> {
-        match v {
-            1 => Some(Outcome::Lost),
-            2 => Some(Outcome::Won),
-            3 => Some(Outcome::Draw),
-            _ => None,
-        }
+    /// This game's outcome from the host's bus value (pure). `my_team`: this game's roster team. The host's team unknown on either
+    /// side = the 1v1 rule (the other game is the rival).
+    pub(crate) fn from_host_wire(v: u32, my_team: Option<u8>) -> Option<Outcome> {
+        let host = match v & 0xFF {
+            1 => Outcome::Won,
+            2 => Outcome::Lost,
+            3 => Outcome::Draw,
+            _ => return None,
+        };
+        let host_team = (v >> 8).checked_sub(1);
+        let same_team = matches!((host_team, my_team), (Some(h), Some(m)) if h == u32::from(m));
+        Some(match (same_team, host) {
+            (true, o) | (false, o @ Outcome::Draw) => o,
+            (false, Outcome::Won) => Outcome::Lost,
+            (false, Outcome::Lost) => Outcome::Won,
+        })
     }
+}
+
+/// ARENA-5 (pure): a side has lost the round: it has players and every one of them is beaten. A side nobody sees (left, not loaded)
+/// never loses (the 1v1 rule: no rival seen = no round won).
+pub(crate) fn all_beaten(side: &[Seen]) -> bool {
+    !side.is_empty() && side.iter().all(|s| s.down)
+}
+
+/// ARENA-5 (pure): every player of a side is up (and the side has players).
+pub(crate) fn all_up(side: &[Seen]) -> bool {
+    !side.is_empty() && side.iter().all(|s| s.up)
+}
+
+/// ARENA-5 (pure): a side's HP for the time limit: the mean of its players' HP fractions (equal team sizes: the sum of PROJECT_SCOPE
+/// §Arena; a leaver's team keeps its mean, as it plays on short-handed). `None` = nobody seen.
+pub(crate) fn side_hp(fractions: &[f32]) -> Option<f32> {
+    (!fractions.is_empty()).then(|| fractions.iter().sum::<f32>() / fractions.len() as f32)
 }
 
 /// ARENA-3: what the round timer needs from the world this tick.
@@ -303,6 +332,8 @@ pub(crate) struct Rounds {
     pub warned: bool,
     /// ARENA-OT: the overtime message was shown in this round.
     pub overtime_said: bool,
+    /// ARENA-5: LOCAL was beaten in this round while a teammate fought on, and sits on the bench until the round ends.
+    pub benched: bool,
 }
 
 impl Default for Rounds {
@@ -315,6 +346,7 @@ impl Default for Rounds {
             bouts: 0,
             warned: false,
             overtime_said: false,
+            benched: false,
         }
     }
 }
@@ -348,7 +380,8 @@ impl Rounds {
         self.step_timed(now_ms, on, local, rival, Timer::default())
     }
 
-    /// One tick (pure). `on`: an Arena match is on and LOCAL stands in the arena. `rival` is `None` when this game sees no rival.
+    /// One 1v1 tick (pure; the tests of the 1v1 rules). `rival` is `None` when this game sees no rival.
+    #[cfg(test)]
     pub(crate) fn step_timed(
         &mut self,
         now_ms: u64,
@@ -357,11 +390,28 @@ impl Rounds {
         rival: Option<Seen>,
         timer: Timer,
     ) -> Vec<Do> {
+        self.step_teams(now_ms, on, local, &[], rival.as_slice(), timer)
+    }
+
+    /// One tick (pure). `on`: an Arena match is on and LOCAL stands in the arena. ARENA-5: `mates` are LOCAL's teammates and `rivals`
+    /// the other team, as this game sees them (a leaver is simply missing: the team plays on short-handed). A round is lost when
+    /// LOCAL and every teammate are beaten, won when every rival is; LOCAL beaten alone goes to the bench ([`Do::Bench`]).
+    pub(crate) fn step_teams(
+        &mut self,
+        now_ms: u64,
+        on: bool,
+        local: Seen,
+        mates: &[Seen],
+        rivals: &[Seen],
+        timer: Timer,
+    ) -> Vec<Do> {
         if !on {
             *self = Rounds::default();
             return Vec::new();
         }
-        let rival = rival.unwrap_or_default();
+        let local_out = local.down || self.benched;
+        let we_lost = local_out && mates.iter().all(|s| s.down);
+        let they_lost = all_beaten(rivals);
         match self.phase {
             Phase::Off => {
                 self.phase = Phase::Starting { at_ms: now_ms };
@@ -381,7 +431,7 @@ impl Rounds {
                 vec![Do::FadeIn, Do::Message("Round 1: fight!".into())]
             }
             Phase::Fighting { armed: false } => {
-                if local.up && rival.up {
+                if local.up && mates.iter().all(|s| s.up) && all_up(rivals) {
                     self.phase = Phase::Fighting { armed: true };
                 }
                 Vec::new()
@@ -394,20 +444,28 @@ impl Rounds {
                 } else {
                     timer.limit_ms
                 };
+                // ARENA-5: beaten while a teammate fights on: out of this round, on the bench.
+                if local_out && !we_lost && !self.benched {
+                    self.benched = true;
+                    out.push(Do::Bench);
+                    out.push(Do::Message(
+                        "You are out of this round. Your team fights on".into(),
+                    ));
+                }
                 let (outcome, timed) = if t < limit {
                     // The round proper: each game judges the downs it sees.
-                    if local.down {
+                    if we_lost {
                         (Outcome::Lost, false)
-                    } else if rival.down {
+                    } else if they_lost {
                         (Outcome::Won, false)
                     } else if let Some(v) = timer.verdict {
                         (v, true)
                     } else {
                         if !self.warned && limit > WARN_LEFT_MS && t >= limit - WARN_LEFT_MS {
                             self.warned = true;
-                            return vec![Do::Message("One minute left!".into())];
+                            out.push(Do::Message("One minute left!".into()));
                         }
-                        return Vec::new();
+                        return out;
                     }
                 } else {
                     // ARENA-OT: overtime. Each game drains its own player (and the bot); the host alone judges, so a fall to 1 HP on
@@ -419,7 +477,7 @@ impl Rounds {
                         ));
                     }
                     let capped = t >= limit + OVERTIME_MS;
-                    let by_downs = match (local.down, rival.down) {
+                    let by_downs = match (we_lost, they_lost) {
                         (true, true) => Some(Outcome::Draw),
                         (true, false) => Some(Outcome::Lost),
                         (false, true) => Some(Outcome::Won),
@@ -479,11 +537,8 @@ impl Rounds {
                     stage = 1;
                     out.push(Do::FadeOut);
                 }
-                if stage <= 1
-                    && lost
-                    && (revive_after_ms()..RESET_AFTER_MS).contains(&t)
-                    && local.downed
-                {
+                // A downed LOCAL gets up whoever won (ARENA-5: a teammate of the winners may be the one downed).
+                if stage <= 1 && (revive_after_ms()..RESET_AFTER_MS).contains(&t) && local.downed {
                     out.push(Do::Revive);
                 }
                 if stage == 1 && t >= RESET_AFTER_MS {
@@ -506,6 +561,7 @@ impl Rounds {
                         self.fight_since_ms = now_ms;
                         self.warned = false;
                         self.overtime_said = false;
+                        self.benched = false;
                         out.push(Do::FadeIn);
                         out.push(Do::Message(format!(
                             "Round {}: fight!",
@@ -596,6 +652,29 @@ pub(crate) fn score() -> Option<(u8, u8)> {
         .as_ref()
         .filter(|(r, _)| r.phase != Phase::Off)
         .map(|(r, _)| (r.won, r.lost))
+}
+
+/// ARENA-5: session ids of the other players seen beaten in the current round (main loop only; cleared outside an armed round).
+static BEATEN_IDS: Mutex<Vec<u64>> = Mutex::new(Vec::new());
+/// ARENA-5: a bench move is waiting (since when; main loop only).
+static BENCH_SINCE: Mutex<Option<Instant>> = Mutex::new(None);
+/// ARENA-5: `(teammates, rivals)` last logged.
+static SIDES: Mutex<(usize, usize)> = Mutex::new((usize::MAX, usize::MAX));
+
+/// ARENA-5 (pure): a player once beaten in the round stays beaten (`ids` holds who was); others as seen.
+pub(crate) fn sticky(ids: &mut Vec<u64>, id: u64, s: Seen) -> Seen {
+    if s.down && !ids.contains(&id) {
+        ids.push(id);
+    }
+    if ids.contains(&id) {
+        Seen {
+            down: true,
+            up: false,
+            ..s
+        }
+    } else {
+        s
+    }
 }
 
 /// The host's verdicts received this match: `(bout key, LOCAL's outcome)`.
@@ -719,23 +798,34 @@ pub(crate) fn tick(base: usize, world: &World) {
     let mut st = lock(&STATE);
     let (rounds, start) = st.get_or_insert_with(|| (Rounds::default(), Instant::now()));
     let now_ms = start.elapsed().as_millis() as u64;
-    let mut local = None;
-    let mut rival = None;
-    let mut rival_addr = None;
     let vs_bot = crate::mm::arena_bots();
-    let mut local_raw = None;
-    for f in world.fighters.iter().flatten() {
-        if f.local {
-            local_raw = Some((f.state, f.hp));
-            local = Some((f.addr, Seen::of(f.state, f.hp)));
-        } else if rival.is_none() && !vs_bot {
-            rival = Some(Seen::of(f.state, f.hp));
-            rival_addr = Some(f.addr);
-        }
-    }
-    let Some((local_addr, mut local_seen)) = local else {
+    let Some(me) = world.fighters.iter().flatten().find(|f| f.local).copied() else {
         return;
     };
+    let (local_addr, mut local_seen, local_raw) =
+        (me.addr, Seen::of(me.state, me.hp), Some((me.state, me.hp)));
+    // ARENA-5: the other players split by team (`team_key`, equal for teammates on every game); against a bot there are none. A player
+    // beaten in this round stays beaten until it ends (a heal on the bench never brings a player back), on every game alike.
+    let mut beaten = lock(&BEATEN_IDS);
+    if rounds.phase != (Phase::Fighting { armed: true }) {
+        beaten.clear();
+    }
+    let mut mates: Vec<(usize, Seen)> = Vec::new();
+    let mut rivals: Vec<(usize, Seen)> = Vec::new();
+    for f in world
+        .fighters
+        .iter()
+        .flatten()
+        .filter(|f| !f.local && !vs_bot)
+    {
+        let s = sticky(&mut beaten, f.id, Seen::of(f.state, f.hp));
+        if f.team == me.team {
+            mates.push((f.addr, s));
+        } else {
+            rivals.push((f.addr, s));
+        }
+    }
+    drop(beaten);
     if !on {
         BAR_GETUP.store(false, Ordering::Relaxed);
         *lock(&SKIP_GUARD) = None;
@@ -760,43 +850,70 @@ pub(crate) fn tick(base: usize, world: &World) {
     // ARENA-4: the bot is the rival (down at 0 HP; its HP in percent of its spawn HP for the time limit).
     let arena_bot = if vs_bot { *lock(&ARENA_BOT) } else { None };
     let bot_hp = arena_bot.and_then(|b| world.bot(b.handle).map(|c| (b, c.hp)));
-    if vs_bot {
-        rival = bot_hp.map(|(_, hp)| Seen::of(0, hp));
-    }
-    // ARENA-3: the host's verdicts on timed-out bouts (key = bout number).
+    let bot_seen: Option<Seen> = if vs_bot {
+        bot_hp.map(|(_, hp)| Seen::of(0, hp))
+    } else {
+        None
+    };
+    // ARENA-3: the host's verdicts on timed-out bouts (key = bout number). ARENA-5: the value names the host's team.
+    let my_team = crate::mm::local_roster_team();
     let mut verdicts = lock(&VERDICTS);
     if !on {
         verdicts.clear();
     }
     for r in crate::net::bus::take(crate::net::bus::topic::ARENA_ROUND) {
-        if let Some(o) = Outcome::from_host_wire(r.fact.value) {
+        if let Some(o) = Outcome::from_host_wire(r.fact.value, my_team) {
             tracing::info!(
-                "arena_rounds: the host's verdict for bout {}: {o:?} for us",
-                r.fact.key
+                "arena_rounds: the host's verdict for bout {} (0x{:X}): {o:?} for us (team {my_team:?})",
+                r.fact.key,
+                r.fact.value
             );
             verdicts.push((r.fact.key, o));
         }
     }
     let next_bout = u32::from(rounds.bouts) + 1;
+    // The time-limit HP: each side's mean HP fraction (ARENA-5; 1v1: the one player's).
     let rival_hp = if vs_bot {
         bot_hp
             .filter(|(b, _)| b.full_hp > 0)
             .map(|(b, hp)| (hp as f32 / b.full_hp as f32).min(1.0))
     } else {
-        rival_addr.and_then(hp_fraction)
+        let f: Vec<f32> = rivals.iter().filter_map(|(a, _)| hp_fraction(*a)).collect();
+        side_hp(&f)
     };
+    let mine: Vec<f32> = std::iter::once(local_addr)
+        .chain(mates.iter().map(|(a, _)| *a))
+        .filter_map(hp_fraction)
+        .collect();
     let timer = Timer {
         host: vs_bot || super::defeatdrop::is_host(base),
-        hp: hp_fraction(local_addr).zip(rival_hp),
+        hp: side_hp(&mine).zip(rival_hp),
         verdict: verdicts.iter().find(|v| v.0 == next_bout).map(|v| v.1),
         limit_ms: LIMIT_OVERRIDE_MS.load(std::sync::atomic::Ordering::Relaxed),
         rival_missing: vs_bot && !bot_hp.is_some_and(|(b, hp)| b.ready && hp > 0),
     };
     drop(verdicts);
     let before = rounds.phase;
-    let dos = rounds.step_timed(now_ms, on, local_seen, rival, timer);
+    let mate_seen: Vec<Seen> = mates.iter().map(|m| m.1).collect();
+    let rival_seen: Vec<Seen> = rivals.iter().map(|r| r.1).chain(bot_seen).collect();
+    let dos = rounds.step_teams(now_ms, on, local_seen, &mate_seen, &rival_seen, timer);
     if !on {
         *lock(&PLACE_SINCE) = None;
+        *lock(&BENCH_SINCE) = None;
+    }
+    if on && !vs_bot {
+        let mut sides = lock(&SIDES);
+        if *sides != (mates.len(), rivals.len()) {
+            *sides = (mates.len(), rivals.len());
+            tracing::info!(
+                "arena_rounds: sides: LOCAL + {} teammate(s) vs {} rival(s) (roster team {my_team:?}, slot {:?})",
+                mates.len(),
+                rivals.len(),
+                crate::mm::local_roster_slot()
+            );
+        }
+    } else {
+        *lock(&SIDES) = (usize::MAX, usize::MAX);
     }
     if std::mem::discriminant(&rounds.phase) != std::mem::discriminant(&before) {
         if matches!(rounds.phase, Phase::RoundOver { .. }) {
@@ -812,7 +929,7 @@ pub(crate) fn tick(base: usize, world: &World) {
     if before == (Phase::Fighting { armed: false })
         && rounds.phase == (Phase::Fighting { armed: true })
     {
-        tracing::info!("arena_rounds: both up: a down counts from now");
+        tracing::info!("arena_rounds: everyone up: a down counts from now");
         // Both games are surely in the arena now: our equipment once more, so the rival draws our real weapons.
         if !vs_bot {
             super::arenaloadout::resend(base);
@@ -863,6 +980,14 @@ pub(crate) fn tick(base: usize, world: &World) {
             Do::FadeOut => set_flag(base, FLAG_FADE_OUT),
             Do::FadeIn => set_flag(base, FLAG_FADE_IN),
             Do::FadeInFrozen => set_flag(base, FLAG_FADE_IN_FROZEN),
+            Do::Bench => {
+                // Frozen with the screen on (the match-end fade, from a visible screen: it stays visible), then off the floor.
+                set_flag(base, FLAG_FADE_IN_FROZEN);
+                *lock(&BENCH_SINCE) = Some(Instant::now());
+                tracing::info!(
+                    "arena_rounds: LOCAL beaten, a teammate fights on: frozen, to the bench"
+                );
+            }
             Do::Revive => {
                 // Every tick while LOCAL is downed in the window (repeats are harmless: `+0x732` is never touched).
                 BAR_GETUP.store(true, Ordering::Relaxed);
@@ -897,6 +1022,7 @@ pub(crate) fn tick(base: usize, world: &World) {
                 BAR_GETUP.store(false, Ordering::Relaxed);
                 set_flag(base, FLAG_HEAL);
                 set_flag(base, FLAG_REFILL_ESTUS);
+                *lock(&BENCH_SINCE) = None;
                 *lock(&PLACE_SINCE) = Some(Instant::now());
                 tracing::info!("arena_rounds: reset: recovery, estus, back to the spawn");
                 // ARENA-LV: a level lost in the round (2026-11-11: level 14 after a revive by the rival) never carries over.
@@ -912,10 +1038,10 @@ pub(crate) fn tick(base: usize, world: &World) {
                 let sent = crate::net::bus::publish(
                     crate::net::bus::topic::ARENA_ROUND,
                     u32::from(key),
-                    o.wire(),
+                    o.wire(my_team),
                 );
                 tracing::info!(
-                    "arena_rounds: bout {key} timed out: {o:?} for the host (published {sent})"
+                    "arena_rounds: bout {key} timed out: {o:?} for the host, team {my_team:?} (published {sent})"
                 );
             }
             Do::Win | Do::Lose => {
@@ -968,6 +1094,15 @@ pub(crate) fn tick(base: usize, world: &World) {
         let force = t.elapsed().as_millis() as u64 >= PLACE_FORCE_AFTER_MS;
         if super::arenacard::place(base, force) || force {
             *pending = None;
+        }
+    }
+    drop(pending);
+    // ARENA-5: the bench move, retried like the reset move (the player may be mid-attack when beaten).
+    let mut bench = lock(&BENCH_SINCE);
+    if let Some(t) = *bench {
+        let force = t.elapsed().as_millis() as u64 >= PLACE_FORCE_AFTER_MS;
+        if super::arenacard::bench(base, force) || force {
+            *bench = None;
         }
     }
 }
@@ -1540,9 +1675,195 @@ mod tests {
         assert_eq!(out[0], Do::Verdict(1, Outcome::Draw));
         assert_eq!(judge(None), Outcome::Draw);
         assert_eq!(
-            Outcome::from_host_wire(Outcome::Won.wire()),
+            Outcome::from_host_wire(Outcome::Won.wire(None), None),
             Some(Outcome::Lost)
         );
+    }
+
+    #[test]
+    fn the_hosts_verdict_holds_for_its_teammates_and_flips_for_its_rivals() {
+        let from = |o: Outcome, host: Option<u8>, me: Option<u8>| {
+            Outcome::from_host_wire(o.wire(host), me).unwrap()
+        };
+        assert_eq!(
+            from(Outcome::Won, Some(0), Some(0)),
+            Outcome::Won,
+            "teammate"
+        );
+        assert_eq!(from(Outcome::Won, Some(0), Some(1)), Outcome::Lost, "rival");
+        assert_eq!(from(Outcome::Lost, Some(1), Some(0)), Outcome::Won);
+        assert_eq!(from(Outcome::Draw, Some(1), Some(0)), Outcome::Draw);
+        assert_eq!(from(Outcome::Draw, Some(1), Some(1)), Outcome::Draw);
+        // Either team unknown: the 1v1 rule (the other game is the rival).
+        assert_eq!(from(Outcome::Won, None, Some(0)), Outcome::Lost);
+        assert_eq!(from(Outcome::Won, Some(0), None), Outcome::Lost);
+        assert_eq!(Outcome::Won.wire(None), 1, "1v1 values unchanged");
+        assert_eq!(Outcome::from_host_wire(0x105, Some(0)), None, "bad outcome");
+    }
+
+    /// ARENA-5: start a 2v2 round (LOCAL + one teammate vs two rivals); returns the next free time.
+    fn start2(r: &mut Rounds) -> u64 {
+        for t in [0, 1_000, 1_050] {
+            r.step_teams(t, true, UP, &[UP], &[UP, UP], Timer::default());
+        }
+        assert_eq!(r.phase, Phase::Fighting { armed: true });
+        2_000
+    }
+
+    #[test]
+    fn a_team_round_waits_for_every_player_up_before_it_counts() {
+        let mut r = Rounds::default();
+        for t in [0, 1_000, 1_050] {
+            r.step_teams(t, true, UP, &[Seen::default()], &[UP, UP], Timer::default());
+        }
+        assert_eq!(
+            r.phase,
+            Phase::Fighting { armed: false },
+            "a teammate not up"
+        );
+        r.step_teams(1_100, true, UP, &[UP], &[UP, BEATEN], Timer::default());
+        assert_eq!(r.phase, Phase::Fighting { armed: false }, "a rival not up");
+        r.step_teams(1_150, true, UP, &[UP], &[UP, UP], Timer::default());
+        assert_eq!(r.phase, Phase::Fighting { armed: true });
+    }
+
+    #[test]
+    fn one_beaten_player_goes_to_the_bench_and_the_round_goes_on() {
+        let mut r = Rounds::default();
+        let t = start2(&mut r);
+        let out = r.step_teams(t, true, BEATEN, &[UP], &[UP, UP], Timer::default());
+        assert_eq!(out[0], Do::Bench);
+        assert!(r.benched);
+        assert_eq!(
+            r.phase,
+            Phase::Fighting { armed: true },
+            "the round goes on"
+        );
+        assert!(
+            r.step_teams(t + 100, true, BEATEN, &[UP], &[UP, UP], Timer::default())
+                .is_empty(),
+            "benched once"
+        );
+        // A heal on the bench does not bring LOCAL back.
+        assert!(r
+            .step_teams(t + 200, true, UP, &[UP], &[UP, BEATEN], Timer::default())
+            .is_empty());
+        // The teammate falls too: the round is lost.
+        let out = r.step_teams(
+            t + 300,
+            true,
+            UP,
+            &[BEATEN],
+            &[UP, BEATEN],
+            Timer::default(),
+        );
+        assert_eq!(out, vec![Do::Message("Round 1: you lost (0-1)".into())]);
+        // The next round starts with nobody on the bench.
+        for ms in [1_000, 5_000] {
+            r.step_teams(t + 300 + ms, true, UP, &[UP], &[UP, UP], Timer::default());
+        }
+        let out = r.step_teams(t + 6_300, true, UP, &[UP], &[UP, UP], Timer::default());
+        assert_eq!(out[0], Do::FadeIn);
+        assert!(!r.benched);
+    }
+
+    #[test]
+    fn a_team_round_is_won_only_when_every_rival_is_beaten() {
+        let mut r = Rounds::default();
+        let t = start2(&mut r);
+        assert!(r
+            .step_teams(t, true, UP, &[UP], &[BEATEN, UP], Timer::default())
+            .is_empty());
+        let out = r.step_teams(
+            t + 100,
+            true,
+            UP,
+            &[BEATEN],
+            &[BEATEN, BEATEN],
+            Timer::default(),
+        );
+        assert_eq!(out, vec![Do::Message("Round 1: you won (1-0)".into())]);
+        assert!(!r.benched, "LOCAL standing is never benched");
+    }
+
+    #[test]
+    fn a_leaver_leaves_a_team_that_plays_on_short_handed() {
+        let mut r = Rounds::default();
+        let t = start2(&mut r);
+        // A rival left (one rival seen): beating the one left wins.
+        let out = r.step_teams(t, true, UP, &[UP], &[BEATEN], Timer::default());
+        assert_eq!(out, vec![Do::Message("Round 1: you won (1-0)".into())]);
+        // The whole other team gone: no round is won by that.
+        let mut r = Rounds::default();
+        let t = start2(&mut r);
+        assert!(r
+            .step_teams(t, true, UP, &[UP], &[], Timer::default())
+            .is_empty());
+        // LOCAL's teammate left: LOCAL beaten alone loses (no bench).
+        let out = r.step_teams(t + 100, true, BEATEN, &[], &[UP], Timer::default());
+        assert_eq!(out, vec![Do::Message("Round 1: you lost (0-1)".into())]);
+    }
+
+    #[test]
+    fn a_downed_winner_still_gets_up_after_a_team_round() {
+        let mut r = Rounds::default();
+        let t = start2(&mut r);
+        r.step_teams(t, true, DOWN, &[UP], &[UP, UP], Timer::default());
+        let out = r.step_teams(
+            t + 100,
+            true,
+            DOWN,
+            &[UP],
+            &[BEATEN, BEATEN],
+            Timer::default(),
+        );
+        assert_eq!(out, vec![Do::Message("Round 1: you won (1-0)".into())]);
+        r.step_teams(t + 1_100, true, DOWN, &[UP], &[UP, UP], Timer::default());
+        let out = r.step_teams(t + 2_100, true, DOWN, &[UP], &[UP, UP], Timer::default());
+        assert_eq!(out, vec![Do::Revive]);
+    }
+
+    #[test]
+    fn overtime_in_teams_ends_when_a_whole_team_is_beaten() {
+        let mut r = Rounds::default();
+        let t = start2(&mut r);
+        let f = r.fight_since_ms;
+        let host = timed(true, Some((0.4, 0.6)), None);
+        let _ = t;
+        let out = r.step_teams(f + ROUND_LIMIT_MS, true, BEATEN, &[UP], &[UP, UP], host);
+        assert!(
+            out.contains(&Do::Bench) && out.contains(&Do::Drain),
+            "{out:?}"
+        );
+        let out = r.step_teams(
+            f + ROUND_LIMIT_MS + 100,
+            true,
+            BEATEN,
+            &[UP],
+            &[BEATEN, BEATEN],
+            host,
+        );
+        assert_eq!(out[0], Do::Verdict(1, Outcome::Won));
+    }
+
+    #[test]
+    fn a_side_loses_only_when_it_has_players_and_all_are_beaten() {
+        assert!(!all_beaten(&[]));
+        assert!(!all_beaten(&[BEATEN, UP]));
+        assert!(all_beaten(&[BEATEN, DOWN]));
+        assert!(!all_up(&[]));
+        assert!(all_up(&[UP, UP]));
+        assert_eq!(side_hp(&[]), None);
+        assert_eq!(side_hp(&[0.5, 1.0]), Some(0.75));
+    }
+
+    #[test]
+    fn once_beaten_in_a_round_a_player_stays_beaten() {
+        let mut ids = Vec::new();
+        assert_eq!(sticky(&mut ids, 7, UP), UP);
+        assert_eq!(sticky(&mut ids, 7, BEATEN), BEATEN);
+        assert_eq!(sticky(&mut ids, 7, UP), BEATEN, "healed on the bench");
+        assert_eq!(sticky(&mut ids, 8, UP), UP, "another player");
     }
 
     #[test]

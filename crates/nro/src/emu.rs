@@ -18,8 +18,14 @@ const REG_KEY: &str = r"HKCU\Software\Valve\Steam\ActiveProcess";
 pub const STEAMCLIENT64_SHA256: &str =
     "A3D78CDA6C25D831304AC05040DDBB46D60F6CEB939BC621685F4C4BC407524E";
 const DEFAULT_SRC: &str = r"D:\Programs\Nucleus\handlers\ELDEN RING NIGHTREIGN";
-/// The Nucleus ids that already have saves in %APPDATA%\Nightreign (index = instance number - 1).
-pub const STEAM_IDS: [u64; 3] = [76561199023125438, 76561199023125439, 76561199023125440];
+/// The emulated Steam ids (index = instance number - 1): the three Nucleus ids that already had saves in %APPDATA%\Nightreign, and
+/// (ARENA-5, a 2v2 on one PC) a fourth whose save is made once by playing the new-game start on instance 4.
+pub const STEAM_IDS: [u64; 4] = [
+    76561199023125438,
+    76561199023125439,
+    76561199023125440,
+    76561199023125441,
+];
 
 /// What a run remembers about its emulated instance (`session.json`).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -110,7 +116,7 @@ pub fn main_ini(n: u32) -> String {
 pub fn stage_instance(pins: &Pins, n: u32) -> Result<EmuInfo, String> {
     let steamid = *STEAM_IDS
         .get(n as usize - 1)
-        .ok_or("at most 3 emulated instances")?;
+        .ok_or("at most 4 emulated instances")?;
     let src = src_dir();
     let sc64 = src.join("steamclient64.dll");
     let got = sys::sha256(&sc64).ok_or_else(|| format!("{} not readable", sc64.display()))?;

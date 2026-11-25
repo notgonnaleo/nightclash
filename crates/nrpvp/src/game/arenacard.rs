@@ -132,9 +132,35 @@ pub(crate) fn step(
 /// same degrees as the player's yaw, so A (yaw -90) takes 270 and B (yaw 90) takes 90]`; check in game (`flag 1000751x 1`).
 const CAMERA_FLAGS: [u32; 2] = [10_007_513, 10_007_511];
 
-/// The spawn of a roster team (pure): team 0 A, every other team B (`None` = unknown: A).
-pub(crate) fn spawn_for(team: Option<u8>) -> ([f32; 3], f32) {
-    SPAWNS[usize::from(team.is_some_and(|t| t > 0))]
+/// ARENA-5: teammates stand side by side, this far apart along z (slot 0 in the middle, slot 1 on +z, slot 2 on -z).
+const MATE_GAP_M: f32 = 4.0;
+/// ARENA-5: a player beaten while a teammate fights on watches from its team's bench, this far out on x behind its own spawn (25 m
+/// behind it), facing the centre like the spawn. `[HYPOTHESIS: the floor is flat out to ±150 m, MEMORY_MAP §27; check in game]`.
+const BENCH_X_M: f32 = 40.0;
+
+fn side(team: Option<u8>) -> usize {
+    usize::from(team.is_some_and(|t| t > 0))
+}
+
+fn slot_z(slot: u8) -> f32 {
+    match slot {
+        0 => 0.0,
+        s if s % 2 == 1 => MATE_GAP_M * f32::from(s.div_ceil(2)),
+        s => -MATE_GAP_M * f32::from(s / 2),
+    }
+}
+
+/// The spawn of a roster team (pure): team 0 A, every other team B (`None` = unknown: A). ARENA-5: `slot` is the player's place in its
+/// team (0-based, [`crate::mm::local_roster_slot`]); teammates stand [`MATE_GAP_M`] apart.
+pub(crate) fn spawn_for(team: Option<u8>, slot: u8) -> ([f32; 3], f32) {
+    let ([x, y, z], yaw) = SPAWNS[side(team)];
+    ([x, y, z + slot_z(slot)], yaw)
+}
+
+/// ARENA-5: the bench of a roster team (pure): on the line of its spawn, [`BENCH_X_M`] from the centre, same facing.
+pub(crate) fn bench_for(team: Option<u8>, slot: u8) -> ([f32; 3], f32) {
+    let ([x, y, z], yaw) = spawn_for(team, slot);
+    ([BENCH_X_M * x.signum(), y, z], yaw)
 }
 
 fn near(a: [f32; 3], b: [f32; 3], m: f32) -> bool {
@@ -235,13 +261,28 @@ pub(crate) fn tick(base: usize, in_expedition: bool, local: bool, at_roundtable:
 /// reset between rounds starts wherever the round ended). `force`: write the heading even over a tilted rotation (mid-attack).
 /// `true` when the move was written.
 pub(crate) fn place(base: usize, force: bool) -> bool {
+    move_to(base, force, false)
+}
+
+/// ARENA-5: put LOCAL on its team's bench (beaten while a teammate fights on), facing the centre. `true` when the move was written.
+pub(crate) fn bench(base: usize, force: bool) -> bool {
+    move_to(base, force, true)
+}
+
+fn move_to(base: usize, force: bool, to_bench: bool) -> bool {
     let team = crate::mm::local_roster_team();
-    let (to, yaw) = spawn_for(team);
+    let slot = crate::mm::local_roster_slot().unwrap_or(0);
+    let (to, yaw) = if to_bench {
+        bench_for(team, slot)
+    } else {
+        spawn_for(team, slot)
+    };
+    let what = if to_bench { "bench" } else { "spawn" };
     let args: Vec<String> = [to[0], to[1], to[2], yaw]
         .iter()
         .map(|v| v.to_string())
         .collect();
-    let side = usize::from(team.is_some_and(|t| t > 0));
+    let side = side(team);
     let moved = if force {
         crate::game::teleport::tp_force(&args)
     } else {
@@ -252,11 +293,15 @@ pub(crate) fn place(base: usize, force: bool) -> bool {
             if let Err(e) = crate::game::flags::set(base, CAMERA_FLAGS[side], true) {
                 tracing::warn!("arena: camera flag {} not set: {e}", CAMERA_FLAGS[side]);
             }
-            tracing::info!("arena: roster team {team:?} -> spawn ({to:?}, yaw {yaw}): {r}");
+            tracing::info!(
+                "arena: roster team {team:?} slot {slot} -> {what} ({to:?}, yaw {yaw}): {r}"
+            );
             true
         }
         Err(e) => {
-            tracing::warn!("arena: roster team {team:?}: spawn move failed (force {force}): {e}");
+            tracing::warn!(
+                "arena: roster team {team:?} slot {slot}: {what} move failed (force {force}): {e}"
+            );
             false
         }
     }
@@ -576,12 +621,44 @@ mod tests {
 
     #[test]
     fn team_zero_takes_spawn_a_the_other_team_spawn_b_facing_each_other() {
-        assert_eq!(spawn_for(Some(0)), ([-15.0, 3.0, 0.0], -90.0));
-        assert_eq!(spawn_for(Some(1)), ([15.0, 3.0, 0.0], 90.0));
-        assert_eq!(spawn_for(None), spawn_for(Some(0)));
+        assert_eq!(spawn_for(Some(0), 0), ([-15.0, 3.0, 0.0], -90.0));
+        assert_eq!(spawn_for(Some(1), 0), ([15.0, 3.0, 0.0], 90.0));
+        assert_eq!(spawn_for(None, 0), spawn_for(Some(0), 0));
         // Both spawns are within one `tp` (100 m) of the arrival point.
         for (p, _) in SPAWNS {
             assert!(near(p, ARRIVAL, 100.0));
+        }
+    }
+
+    #[test]
+    fn teammates_stand_side_by_side_and_every_spawn_is_its_own() {
+        assert_eq!(spawn_for(Some(0), 1), ([-15.0, 3.0, 4.0], -90.0));
+        assert_eq!(spawn_for(Some(0), 2), ([-15.0, 3.0, -4.0], -90.0));
+        assert_eq!(spawn_for(Some(1), 2), ([15.0, 3.0, -4.0], 90.0));
+        let mut all = Vec::new();
+        for team in [Some(0), Some(1)] {
+            for slot in 0..3 {
+                let (p, _) = spawn_for(team, slot);
+                assert!(near(p, ARRIVAL, 100.0), "{team:?} {slot}: within one tp");
+                assert!(
+                    !all.iter().any(|q| near(p, *q, 3.0)),
+                    "{team:?} {slot}: apart"
+                );
+                all.push(p);
+            }
+        }
+    }
+
+    #[test]
+    fn a_bench_is_behind_its_own_spawn_away_from_the_fight() {
+        for team in [Some(0), Some(1)] {
+            for slot in 0..3 {
+                let (s, yaw) = spawn_for(team, slot);
+                let (b, byaw) = bench_for(team, slot);
+                assert_eq!(byaw, yaw, "same facing: the centre");
+                assert_eq!((b[1], b[2]), (s[1], s[2]));
+                assert!(b[0].abs() > s[0].abs() + 20.0 && b[0].signum() == s[0].signum());
+            }
         }
     }
 }

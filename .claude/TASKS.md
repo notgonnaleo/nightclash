@@ -524,6 +524,18 @@ build, or by eye); no `arena_level: slipped` line after a lost round and no mid-
 again with one Commence (no `session: role none -> other` without a `Commence pressed` before it), as host and as client, in both
 return orders.
 
+### ARENA-5 — Arena Duo (2v2) and Trio (3v3) (Leonardo 2026-11-24; rules DECISIONS "Arena Duo / Trio rules")
+Owner: OPUS | Status: **built (branch `arena-duo-trio`); 2v2 PASS on four instances (2026-11-24, testing-log: round 1 by hand with
+real hits, then the scenario's three rounds step by step)**; open: an unattended `mi-arena-duo` run, Trio, real Steam | Depends on: MM-FILL (packing, roster teams)
+Built: the Arena card queues Duo / Trio (`menuflow`, a short party is filled); `arenarounds` judges whole teams (`step_teams`: lost
+when LOCAL and every teammate are beaten, won when every rival is; a beaten player stays beaten for the round; a leaver is simply
+missing), a beaten player with a teammate still up is frozen on its team's bench (`Do::Bench`, `arenacard::bench`); the time limit
+compares each side's mean HP; the host's verdict carries its roster team (`Outcome::wire`); teammates spawn 4 m apart by roster slot
+(`mm::local_roster_slot`). `nro` takes 4 instances (instance 4's save made once by hand). Console `mm_queue_arena_duo/squad`.
+Acceptance: `scenarios/mi-arena-duo.toml` PASS (four instances: bench, team rounds both ways, 2-1, WIN / LOSE per team); the next
+Friend Session with 4+ players plays a 2v2 and, with 6, a 3v3 (TESTING §6). Later: a follow camera instead of the bench seat (needs a
+hidden body, DECISIONS).
+
 ### ARENA-ULT-DMG — Some ultimates deal no damage to a rival player (Leonardo, 2026-11-17)
 Owner: OPUS | Status: **open: which ultimates is UNKNOWN** (ask Leonardo) | Depends on: nothing
 Static check done (2026-11-17, regulation 1.03.3 + Smithbox 2.2.6 defs and row names, read-only exporter in the scratchpad): the

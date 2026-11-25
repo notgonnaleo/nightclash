@@ -171,6 +171,18 @@ pub(crate) fn local_roster_team() -> Option<u8> {
     roster_teams()?.get(&pid).copied()
 }
 
+/// Game loop (ARENA-5): LOCAL's place in its roster team (0-based, by session id; the same on every game), `None` until it is known.
+pub(crate) fn local_roster_slot() -> Option<u8> {
+    roster_slot(&roster_teams()?, local_pid()?)
+}
+
+/// ARENA-5 (pure): `pid`'s place among the players of its team in `map`, by session id.
+pub(crate) fn roster_slot(map: &std::collections::HashMap<u64, u8>, pid: u64) -> Option<u8> {
+    let team = *map.get(&pid)?;
+    let below = map.iter().filter(|(p, t)| **t == team && **p < pid).count();
+    u8::try_from(below).ok()
+}
+
 /// Worker: publish the queue phase.
 pub(crate) fn set_phase(p: u8) {
     PHASE.store(p, Ordering::Relaxed);
@@ -564,6 +576,19 @@ mod tests {
             classify_world(1, Some(stale), stale),
             World::Present(Some(Phase::Roundtable))
         );
+    }
+
+    #[test]
+    fn a_players_slot_is_its_rank_by_session_id_inside_its_team() {
+        let map: std::collections::HashMap<u64, u8> = [(30, 1), (10, 0), (20, 1), (40, 0), (50, 1)]
+            .into_iter()
+            .collect();
+        assert_eq!(roster_slot(&map, 10), Some(0));
+        assert_eq!(roster_slot(&map, 40), Some(1));
+        assert_eq!(roster_slot(&map, 20), Some(0));
+        assert_eq!(roster_slot(&map, 30), Some(1));
+        assert_eq!(roster_slot(&map, 50), Some(2));
+        assert_eq!(roster_slot(&map, 99), None, "not in the roster");
     }
 
     #[test]
