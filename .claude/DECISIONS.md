@@ -276,3 +276,18 @@ round, so a heal on the bench changes nothing); at the time limit each side's **
 teams; a short-handed team keeps a fair number); the host's verdict carries the host's roster team, so its teammates take its
 outcome and only the rivals the opposite; teammates spawn 4 m apart; Duo / Trio queues fill a short party with random players as
 in Battle Royale (MM-FILL); bots stay Solo only.
+
+## 2026-11-24 — Arena: the beaten player watches its team; Duo / Trio against bots (Leonardo)
+
+Replaces "built first as a sideline seat" of "Arena Duo / Trio rules" above (TASKS ARENA-6). Leonardo, after the four-instance 2v2:
+- **A beaten player spectates its living teammates, as in Battle Royale** (the bench was not what he wanted): no control, the camera
+  on a teammate, the spectator's switch inputs change who. Built as: frozen, collision and gravity off, moved to a far bench, the
+  character disabled there, then the body moved onto the watched teammate every tick (the camera follows it). Leonardo proposed the same idea ("alive,
+  invisible and locked, tracking the player alive"). The two-instance lab (2026-11-25) showed the disable hides the body only on its
+  own game but freezes it in place for the others, so it is hidden on a far bench before it follows. **If the 2v2 still shows the
+  body to the others**, **the fallback is a real death** (Leonardo chose it over keeping the bench): the game hides a dead, held
+  body on every game (Battle Royale, proven on real Steam), at the cost of the comeback and level loss at the reset.
+- **Bots On with Duo / Trio on the Arena card = LOCAL plus bot allies against a bot team** (2v2: one ally vs two bots; 3v3: two
+  allies vs three), offline as the Solo bot match (chosen over "LOCAL alone against a bot team"; friends + bots stays impossible,
+  BOT-0). Agent's rules: allies keep the game's ally team 2, enemy bots get 6 so they do not fight each other (29 makes every bot a
+  rival of every other); a bot is beaten at 0 HP and replaced at the reset, as in Solo.

@@ -134,9 +134,11 @@ const CAMERA_FLAGS: [u32; 2] = [10_007_513, 10_007_511];
 
 /// ARENA-5: teammates stand side by side, this far apart along z (slot 0 in the middle, slot 1 on +z, slot 2 on -z).
 const MATE_GAP_M: f32 = 4.0;
-/// ARENA-5: a player beaten while a teammate fights on watches from its team's bench, this far out on x behind its own spawn (25 m
-/// behind it), facing the centre like the spawn. `[HYPOTHESIS: the floor is flat out to ±150 m, MEMORY_MAP §27; check in game]`.
-const BENCH_X_M: f32 = 40.0;
+/// ARENA-5 / ARENA-6: a player beaten while a teammate fights on is first put on its team's bench, this far out on x behind its own
+/// spawn (105 m behind it), facing the centre like the spawn. ARENA-6: once that position has reached the other games the body is
+/// disabled, which stops its position updates (mi-arena-hide-lab 2026-11-25): the others keep seeing it there, a figure too far off to
+/// matter, while its own camera follows a teammate. The floor holds at ±120 m (the Arena bots' park, `features::bots::fill`).
+const BENCH_X_M: f32 = 120.0;
 
 fn side(team: Option<u8>) -> usize {
     usize::from(team.is_some_and(|t| t > 0))

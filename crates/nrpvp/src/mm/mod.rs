@@ -136,26 +136,34 @@ pub(crate) fn set_arena_match(on: bool) {
     ARENA_MATCH.store(on, Ordering::Relaxed);
 }
 
-/// ARENA-4: the next (or current) expedition is an offline Arena match against one bot (Bots On + Arena card + Solo + Commence; set by
-/// the Commence handler, cleared by the bots feature when that expedition is over).
-static ARENA_BOTS: AtomicBool = AtomicBool::new(false);
+/// ARENA-4: the next (or current) expedition is an offline Arena match against bots (Bots On + Arena card + Commence; set by the
+/// Commence handler, cleared by the bots feature when that expedition is over). ARENA-6: the value is the team size (1 Solo: LOCAL vs
+/// one bot; 2 Duo: LOCAL + 1 bot ally vs 2 bots; 3 Trio: LOCAL + 2 bot allies vs 3 bots); 0 = none.
+static ARENA_BOTS: AtomicU8 = AtomicU8::new(0);
 
-/// ARENA-4: start (or forget) an Arena match against a bot.
-pub(crate) fn set_arena_bots(on: bool) {
-    if ARENA_BOTS.swap(on, Ordering::Relaxed) != on {
-        tracing::info!(
-            "arena: match against a bot {}",
-            if on {
-                "requested (Bots On, Arena card, Commence)"
-            } else {
-                "over"
-            }
-        );
+/// ARENA-4 / ARENA-6: start an Arena match against bots with this team size (1..=3), or forget it (0).
+pub(crate) fn set_arena_bots(size: u8) {
+    let size = size.min(3);
+    let was = ARENA_BOTS.swap(size, Ordering::Relaxed);
+    if was != size {
+        if size > 0 {
+            tracing::info!(
+                "arena: match against bots requested (Bots On, Arena card, Commence): {size} vs {size}, {} bot(s)",
+                2 * size - 1
+            );
+        } else {
+            tracing::info!("arena: match against bots over");
+        }
     }
 }
 
-/// ARENA-4: the current expedition is an Arena match against a bot (no queue, no session).
+/// ARENA-4: the current expedition is an Arena match against bots (no queue, no session).
 pub(crate) fn arena_bots() -> bool {
+    ARENA_BOTS.load(Ordering::Relaxed) > 0
+}
+
+/// ARENA-6: the team size of the current Arena match against bots (0 = none).
+pub(crate) fn arena_bots_size() -> u8 {
     ARENA_BOTS.load(Ordering::Relaxed)
 }
 
