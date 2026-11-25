@@ -188,9 +188,10 @@ pub(crate) const T_HELP_ON: usize = 9;
 pub(crate) const T_HELP_OFF: usize = 10;
 /// ARENA-1: Commence on the Arena card (Solo) starts the Arena search.
 pub(crate) const T_ARENA_SEARCHING: usize = 11;
-/// ARENA-1: the Arena card with Duo / Trio (ARENA-5).
-pub(crate) const T_ARENA_SOLO: usize = 12;
-const N_TEXTS: usize = 13;
+/// ARENA-5: Commence on the Arena card with Duo / Trio starts the Arena search for 2 vs 2 / 3 vs 3.
+pub(crate) const T_ARENA_DUO: usize = 12;
+pub(crate) const T_ARENA_TRIO: usize = 13;
+const N_TEXTS: usize = 14;
 const TEXT_UNITS: usize = 256;
 
 /// Requests from the handler to the thread.
@@ -202,6 +203,9 @@ pub(crate) const REQ_QUEUE_DUO: u8 = 3;
 pub(crate) const REQ_QUEUE_TRIO: u8 = 4;
 /// ARENA-1: an Arena queue, Solo (1v1).
 pub(crate) const REQ_QUEUE_ARENA_SOLO: u8 = 5;
+/// ARENA-5: an Arena queue, Duo (2v2) / Trio (3v3); a short party is filled with random players as in Battle Royale (MM-FILL).
+pub(crate) const REQ_QUEUE_ARENA_DUO: u8 = 6;
+pub(crate) const REQ_QUEUE_ARENA_TRIO: u8 = 7;
 
 /// What a Commence press does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -212,8 +216,9 @@ pub(crate) enum Decision {
     PassMultiplayer,
     /// BOT-5: Bots On, Solo: the game's own solo Commence, and the expedition is a match against bots.
     PassBots,
-    /// ARENA-4: Bots On, Solo, the Arena card: the game's own solo Commence, and the expedition is an Arena match against one bot.
-    PassArenaBots,
+    /// ARENA-4: Bots On, the Arena card: the game's own solo Commence, and the expedition is an Arena match against bots. ARENA-6: the
+    /// team size (1 Solo: one bot; 2 Duo: LOCAL + 1 bot ally vs 2 bots; 3 Trio: LOCAL + 2 bot allies vs 3 bots).
+    PassArenaBots(u8),
     /// Show our dialog `text` instead of Commence and hand `request` to the thread.
     Dialog { text: usize, request: u8 },
 }
@@ -248,9 +253,10 @@ pub(crate) fn decide_for_card(
     decide(players, phase, mm_on, mode)
 }
 
-/// ARENA-1 (pure): a Commence on the Arena card with the queue idle starts the Arena search (Solo only for now); `None` = not the
+/// ARENA-1 (pure): a Commence on the Arena card with the queue idle starts the Arena search (ARENA-5: Solo, Duo or Trio); `None` = not the
 /// Arena card, not idle (Stop Searching and a found match go through [`decide_for_card`] as for Battle Royale) or Offline (the game's
-/// own solo expedition, as any other card). ARENA-4: with Bots On, Solo is a match against one bot at once (no search, no queue needed).
+/// own solo expedition, as any other card). ARENA-4: with Bots On, a match against bots at once (no search, no queue needed); ARENA-6: Duo
+/// and Trio too (LOCAL with bot allies against a bot team), as the game's own solo expedition.
 pub(crate) fn decide_arena(
     arena_card: Option<bool>,
     players: u8,
@@ -264,14 +270,11 @@ pub(crate) fn decide_arena(
         return None;
     }
     Some(if bots {
-        if players == PLAYERS_ONE {
-            Decision::PassArenaBots
-        } else {
-            Decision::Dialog {
-                text: T_BOTS_SOLO,
-                request: REQ_NONE,
-            }
-        }
+        Decision::PassArenaBots(match players {
+            PLAYERS_ONE => 1,
+            PLAYERS_TWO => 2,
+            _ => 3,
+        })
     } else if !mm_on {
         Decision::Dialog {
             text: T_OFF,
@@ -282,10 +285,15 @@ pub(crate) fn decide_arena(
             text: T_ARENA_SEARCHING,
             request: REQ_QUEUE_ARENA_SOLO,
         }
+    } else if players == PLAYERS_TWO {
+        Decision::Dialog {
+            text: T_ARENA_DUO,
+            request: REQ_QUEUE_ARENA_DUO,
+        }
     } else {
         Decision::Dialog {
-            text: T_ARENA_SOLO,
-            request: REQ_NONE,
+            text: T_ARENA_TRIO,
+            request: REQ_QUEUE_ARENA_TRIO,
         }
     })
 }
@@ -368,8 +376,12 @@ Choose Solo in Matchmaking Settings > Number of Players.".to_string(),
         "Arena: searching for an opponent (Solo, 1 vs 1).
 The match starts by itself in the Nightlord's arena.
 To stop, press Stop Searching.".to_string(),
-        "The Arena is Solo (1 vs 1) for now.
-Choose Solo in Matchmaking Settings > Number of Players.".to_string(),
+        "Arena: searching for players (Duo, 2 vs 2).
+Your party queues together; a missing teammate is found for you.
+To stop, press Stop Searching.".to_string(),
+        "Arena: searching for players (Trio, 3 vs 3).
+Your party queues together; missing teammates are found for you.
+To stop, press Stop Searching.".to_string(),
     ]
 }
 
@@ -421,7 +433,7 @@ fn decision_code(d: Decision) -> u64 {
         Decision::Pass => 1,
         Decision::PassMultiplayer => 2,
         Decision::PassBots => 3,
-        Decision::PassArenaBots => 4,
+        Decision::PassArenaBots(n) => 4 | (u64::from(n) << 4),
         Decision::Dialog { text, request } => 0x100 | ((text as u64) << 4) | u64::from(request),
     }
 }
@@ -514,7 +526,14 @@ unsafe extern "system" fn veh(info: *mut EXCEPTION_POINTERS) -> i32 {
             match d {
                 Decision::Pass => {}
                 Decision::PassBots => crate::features::bots::set_bots_match(true),
-                Decision::PassArenaBots => crate::mm::set_arena_bots(true),
+                // ARENA-6: the team size is ours; the game must run its own SOLO Commence (Duo / Trio would start its matchmaking), so
+                // the players byte goes to one first, as PassMultiplayer writes two.
+                Decision::PassArenaBots(n) => {
+                    if n > 1 {
+                        let _ = settings.set_players(PLAYERS_ONE);
+                    }
+                    crate::mm::set_arena_bots(n);
+                }
                 Decision::PassMultiplayer => {
                     let _ = settings.set_players(PLAYERS_TWO);
                 }
@@ -841,10 +860,16 @@ fn run(base: usize) {
                     }
                 );
             }
-            REQ_QUEUE_ARENA_SOLO => {
-                let ok = crate::mm::send(crate::mm::Cmd::QueueArena(crate::mm::Mode::Solo));
+            r @ (REQ_QUEUE_ARENA_SOLO | REQ_QUEUE_ARENA_DUO | REQ_QUEUE_ARENA_TRIO) => {
+                let mode = match r {
+                    REQ_QUEUE_ARENA_DUO => crate::mm::Mode::Duo,
+                    REQ_QUEUE_ARENA_TRIO => crate::mm::Mode::Squad,
+                    _ => crate::mm::Mode::Solo,
+                };
+                let ok = crate::mm::send(crate::mm::Cmd::QueueArena(mode));
                 tracing::info!(
-                    "br_menu: Commence on the Arena card -> queue Arena Solo ({})",
+                    "br_menu: Commence on the Arena card -> queue Arena {} ({})",
+                    mode.label(),
                     if ok {
                         "sent"
                     } else {
@@ -1157,7 +1182,7 @@ mod tests {
     }
 
     #[test]
-    fn the_arena_card_starts_the_arena_search_solo_only() {
+    fn the_arena_card_starts_the_arena_search_solo_duo_or_trio() {
         use crate::mm::PHASE_IDLE;
         let bro = GameMode::BattleRoyale;
         assert_eq!(
@@ -1170,8 +1195,15 @@ mod tests {
         assert_eq!(
             decide_arena(Some(true), PLAYERS_TWO, PHASE_IDLE, true, bro, false),
             Some(Decision::Dialog {
-                text: T_ARENA_SOLO,
-                request: REQ_NONE
+                text: T_ARENA_DUO,
+                request: REQ_QUEUE_ARENA_DUO
+            })
+        );
+        assert_eq!(
+            decide_arena(Some(true), PLAYERS_THREE, PHASE_IDLE, true, bro, false),
+            Some(Decision::Dialog {
+                text: T_ARENA_TRIO,
+                request: REQ_QUEUE_ARENA_TRIO
             })
         );
         assert_eq!(
@@ -1211,22 +1243,25 @@ mod tests {
     }
 
     #[test]
-    fn bots_on_makes_the_arena_card_a_match_against_one_bot_solo_only() {
+    fn bots_on_makes_the_arena_card_a_match_against_bots_of_the_chosen_size() {
         use crate::mm::PHASE_IDLE;
         let bro = GameMode::BattleRoyale;
         for mm_on in [true, false] {
             assert_eq!(
                 decide_arena(Some(true), PLAYERS_ONE, PHASE_IDLE, mm_on, bro, true),
-                Some(Decision::PassArenaBots),
+                Some(Decision::PassArenaBots(1)),
                 "no queue needed (mm {mm_on})"
             );
         }
         assert_eq!(
             decide_arena(Some(true), PLAYERS_TWO, PHASE_IDLE, true, bro, true),
-            Some(Decision::Dialog {
-                text: T_BOTS_SOLO,
-                request: REQ_NONE
-            })
+            Some(Decision::PassArenaBots(2)),
+            "ARENA-6: Duo = LOCAL + 1 bot ally vs 2 bots"
+        );
+        assert_eq!(
+            decide_arena(Some(true), PLAYERS_THREE, PHASE_IDLE, true, bro, true),
+            Some(Decision::PassArenaBots(3)),
+            "ARENA-6: Trio = LOCAL + 2 bot allies vs 3 bots"
         );
         assert_eq!(
             decide_arena(Some(false), PLAYERS_ONE, PHASE_IDLE, true, bro, true),

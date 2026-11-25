@@ -199,7 +199,7 @@ pub struct Stage {
     pub config: BTreeMap<String, toml::Value>,
     /// Load the game-data package (default true when the dist has one).
     pub no_gamedata: bool,
-    /// Emulated-Steam instance number (1..=3); `None` = the normal real-Steam launch.
+    /// Emulated-Steam instance number (1..=4); `None` = the normal real-Steam launch.
     pub emulated: Option<u32>,
 }
 

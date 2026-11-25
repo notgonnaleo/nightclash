@@ -797,6 +797,14 @@ fn run_command(cmd: Command, src: &str, team: &mut team::TeamCtl) {
                 );
             }
         }
+        Command::MmQueueArena(mode) => {
+            if !crate::mm::send(crate::mm::Cmd::QueueArena(mode)) {
+                tracing::info!(
+                    "mm_queue: {src}: Arena queue {} not sent (queue feature off or command queue full)",
+                    mode.label()
+                );
+            }
+        }
         Command::MmJoin(j) => {
             if !crate::mm::send(crate::mm::Cmd::Join(j)) {
                 tracing::info!(

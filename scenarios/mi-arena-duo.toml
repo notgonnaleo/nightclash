@@ -1,0 +1,348 @@
+name = "mi-arena-duo"
+about = "ARENA-5 acceptance: four single players queue Arena Duo and are packed into two teams of two (2v2); every game sees 1 teammate and 2 rivals and stands on its own spawn. Round 1: one player of team B at 1 HP goes to the bench while the round goes on, then its teammate: team A wins. Round 2: team A falls: team B wins (1-1). Round 3: team B falls: team A wins 2-1 (WIN banner on both of team A, LOSE on both of team B), everyone back at the Roundtable"
+tags = ["mi", "slow", "lab"]   # lab: teardown "keep" (four games take minutes to start)
+teardown = "keep"   # a failed step leaves the four games up (they take minutes to start; finish with nro stop --all)
+# Four emulated-Steam instances (MULTI-INSTANCE.md 20): Steam closed, `nro desk` running, the PC untouched while it runs; instance 4
+# needs its own save once (play the new-game start on it). Needs the DEV DLL and game data (as mi-arena-rounds). About 32 GB of
+# memory: run `scripts\four-instances.ps1 -Prepare` first and `-Restore` after `nro stop --all` (orchestrator/GUIDE.md section 4).
+# Run: nro run scenarios\mi-arena-duo.toml
+# Teams: the queue packs singles by party id (lowest first), so instances 1 and 2 are team A (roster team 0) and 3 and 4 team B; the
+# steps below check that first. Rounds end with `hp_set 1` (immortal players stop at 1 HP: the round end of ARENA-HP1).
+
+[config]            # every instance, as mi-arena-rounds
+team_size = 1
+ui_flag_watch = false
+mm_probe = true
+mm_queue = true
+mm_match_players = 2
+mm_join = true
+mm_quiet_invite = true
+mm_auto_start = true
+br_menu = true
+mm_host_create = false
+
+[[instance]]
+n = 1
+role = "host"
+
+[[instance]]
+n = 2
+role = "client"
+
+[[instance]]
+n = 3
+role = "client"
+
+[[instance]]
+n = 4
+role = "client"
+
+[[step]]
+instance = 1
+navigate = "title_to_world"
+
+[[step]]
+instance = 2
+navigate = "title_to_world"
+
+[[step]]
+instance = 3
+navigate = "title_to_world"
+
+[[step]]
+instance = 4
+navigate = "title_to_world"
+
+# Instance 1 queues first, so it owns the queue lobby. The console starts the Duo queue (the menu's Duo needs the Number of Players
+# row; `navigate = "queue_arena"` checks Solo).
+[[step]]
+instance = 1
+console = "mm_queue_arena_duo"
+
+[[step]]
+instance = 1
+wait = { console = "mm_status", contains = "searching", timeout_s = 30 }
+
+[[step]]
+instance = 1
+expect_log = { contains = ["kind=arena"], since = "run" }
+
+[[step]]
+instance = 2
+console = "mm_queue_arena_duo"
+
+[[step]]
+instance = 3
+console = "mm_queue_arena_duo"
+
+[[step]]
+instance = 4
+console = "mm_queue_arena_duo"
+
+[[step]]
+instance = 1
+mark = "queued"
+
+[[step]]
+instance = 2
+mark = "queued"
+
+[[step]]
+instance = 3
+mark = "queued"
+
+[[step]]
+instance = 4
+mark = "queued"
+
+# From here on no key and no click until the ending: only watching.
+[[step]]
+instance = 1
+wait = { console = "mm_status", contains = "MATCH READY", timeout_s = 120 }
+
+[[step]]
+instance = 1
+wait = { console = "status", contains = ["world loaded, 4 player(s)"], timeout_s = 300, every_ms = 2000 }
+
+[[step]]
+instance = 2
+wait = { console = "status", contains = ["world loaded, 4 player(s)"], timeout_s = 120, every_ms = 2000 }
+
+[[step]]
+instance = 3
+wait = { console = "status", contains = ["world loaded, 4 player(s)"], timeout_s = 120, every_ms = 2000 }
+
+[[step]]
+instance = 4
+wait = { console = "status", contains = ["world loaded, 4 player(s)"], timeout_s = 120, every_ms = 2000 }
+
+# Each game on its own team (the slot inside a team follows the session id, so either game of a team may be slot 0; the spawns
+# and benches are checked in the round steps).
+[[step]]
+instance = 1
+wait_log = { contains = ["arena: roster team Some(0) slot"], timeout_s = 120, since = "mark:queued" }
+
+[[step]]
+instance = 2
+wait_log = { contains = ["arena: roster team Some(0) slot"], timeout_s = 120, since = "mark:queued" }
+
+[[step]]
+instance = 3
+wait_log = { contains = ["arena: roster team Some(1) slot"], timeout_s = 120, since = "mark:queued" }
+
+[[step]]
+instance = 4
+wait_log = { contains = ["arena: roster team Some(1) slot"], timeout_s = 120, since = "mark:queued" }
+
+[[step]]
+instance = 1
+wait_log = { contains = ["arena_rounds: sides: LOCAL + 1 teammate(s) vs 2 rival(s)", "arena_rounds: everyone up: a down counts from now"], timeout_s = 60, since = "mark:queued" }
+
+[[step]]
+instance = 2
+wait_log = { contains = ["arena_rounds: sides: LOCAL + 1 teammate(s) vs 2 rival(s)", "arena_rounds: everyone up: a down counts from now"], timeout_s = 60, since = "mark:queued" }
+
+[[step]]
+instance = 3
+wait_log = { contains = ["arena_rounds: sides: LOCAL + 1 teammate(s) vs 2 rival(s)", "arena_rounds: everyone up: a down counts from now"], timeout_s = 60, since = "mark:queued" }
+
+[[step]]
+instance = 4
+wait_log = { contains = ["arena_rounds: sides: LOCAL + 1 teammate(s) vs 2 rival(s)", "arena_rounds: everyone up: a down counts from now"], timeout_s = 60, since = "mark:queued" }
+
+[[step]]
+instance = 1
+screenshot = "p1_round1_start"
+
+[[step]]
+instance = 1
+mark = "rounds"
+
+[[step]]
+instance = 2
+mark = "rounds"
+
+[[step]]
+instance = 3
+mark = "rounds"
+
+[[step]]
+instance = 4
+mark = "rounds"
+
+# Round 1: player 3 is beaten first: the far bench, hidden there, then it watches its teammate (ARENA-6); the round goes on.
+[[step]]
+instance = 3
+console = "hp_set 1"
+
+[[step]]
+instance = 3
+wait_log = { contains = ["arena_rounds: LOCAL beaten, a teammate fights on: frozen, watching the team", "-> bench (", "spectator body hidden on", "arena_rounds: watching teammate"], timeout_s = 15, since = "mark:rounds" }
+
+[[step]]
+instance = 1
+keys = "wait 3000ms"
+
+[[step]]
+instance = 3
+screenshot = "p3_watching"
+
+[[step]]
+instance = 1
+screenshot = "p1_sees_p3_on_the_bench"
+
+[[step]]
+instance = 1
+expect_log = { absent = ["arena_rounds: Round 1: you"], since = "mark:rounds" }
+
+# Then player 4: team B is beaten, team A wins round 1 on every game.
+[[step]]
+instance = 4
+console = "hp_set 1"
+
+[[step]]
+instance = 1
+wait_log = { contains = ["arena_rounds: Round 1: you won (1-0)"], timeout_s = 20, since = "mark:rounds" }
+
+[[step]]
+instance = 2
+wait_log = { contains = ["arena_rounds: Round 1: you won (1-0)"], timeout_s = 20, since = "mark:rounds" }
+
+[[step]]
+instance = 3
+wait_log = { contains = ["arena_rounds: Round 1: you lost (0-1)"], timeout_s = 20, since = "mark:rounds" }
+
+[[step]]
+instance = 4
+wait_log = { contains = ["arena_rounds: Round 1: you lost (0-1)"], timeout_s = 20, since = "mark:rounds" }
+
+[[step]]
+instance = 3
+wait_log = { contains = ["arena_rounds: Round 2: fight!"], timeout_s = 30, since = "mark:rounds" }
+
+[[step]]
+instance = 1
+wait_log = { contains = ["arena_rounds: Round 2: fight!"], timeout_s = 30, since = "mark:rounds" }
+
+[[step]]
+instance = 1
+mark = "round2"
+
+[[step]]
+instance = 1
+keys = "wait 3000ms"
+
+[[step]]
+instance = 3
+screenshot = "p3_round2_start_back_on_spawn"
+
+# Round 2: team A falls: team B wins.
+[[step]]
+instance = 2
+console = "hp_set 1"
+
+[[step]]
+instance = 2
+wait_log = { contains = ["-> bench (", "arena_rounds: watching teammate"], timeout_s = 15, since = "mark:rounds" }
+
+[[step]]
+instance = 1
+console = "hp_set 1"
+
+[[step]]
+instance = 1
+wait_log = { contains = ["arena_rounds: Round 2: you lost (1-1)"], timeout_s = 20, since = "mark:rounds" }
+
+[[step]]
+instance = 2
+wait_log = { contains = ["arena_rounds: Round 2: you lost (1-1)"], timeout_s = 20, since = "mark:rounds" }
+
+[[step]]
+instance = 3
+wait_log = { contains = ["arena_rounds: Round 2: you won (1-1)"], timeout_s = 20, since = "mark:rounds" }
+
+[[step]]
+instance = 4
+wait_log = { contains = ["arena_rounds: Round 2: you won (1-1)"], timeout_s = 20, since = "mark:rounds" }
+
+[[step]]
+instance = 1
+wait_log = { contains = ["arena_rounds: Round 3: fight!"], timeout_s = 30, since = "mark:rounds" }
+
+[[step]]
+instance = 1
+keys = "wait 3000ms"
+
+# Round 3: team B falls again: team A wins the match 2-1.
+[[step]]
+instance = 4
+console = "hp_set 1"
+
+[[step]]
+instance = 3
+console = "hp_set 1"
+
+[[step]]
+instance = 1
+wait_log = { contains = ["arena_rounds: match over, WIN 2-1"], timeout_s = 30, since = "mark:rounds" }
+
+[[step]]
+instance = 2
+wait_log = { contains = ["arena_rounds: match over, WIN 2-1"], timeout_s = 30, since = "mark:rounds" }
+
+[[step]]
+instance = 3
+wait_log = { contains = ["arena_rounds: match over, LOSE 1-2"], timeout_s = 30, since = "mark:rounds" }
+
+[[step]]
+instance = 4
+wait_log = { contains = ["arena_rounds: match over, LOSE 1-2"], timeout_s = 30, since = "mark:rounds" }
+
+[[step]]
+instance = 1
+keys = "wait 2000ms"
+
+[[step]]
+instance = 2
+screenshot = "p2_win_banner"
+
+[[step]]
+instance = 4
+screenshot = "p4_lose_banner"
+
+# The ending, as mi-arena-rounds: the banner (10 s), the result pages pressed through, everyone back at the Roundtable.
+[[step]]
+instance = 1
+keys = "wait 12000ms"
+
+[[step]]
+instance = 1
+keys = "F; wait 3s; F; wait 3s; F; wait 4s; F; wait 6s"
+
+[[step]]
+instance = 2
+keys = "F; wait 3s; F; wait 3s; F; wait 4s; F; wait 6s"
+
+[[step]]
+instance = 3
+keys = "F; wait 3s; F; wait 3s; F; wait 4s; F; wait 6s"
+
+[[step]]
+instance = 4
+keys = "F; wait 3s; F; wait 3s; F; wait 4s; F; wait 6s"
+
+[[step]]
+instance = 1
+wait = { console = "status", contains = ["team_type 1"], timeout_s = 120, every_ms = 2000 }
+
+[[step]]
+instance = 4
+wait = { console = "status", contains = ["team_type 1"], timeout_s = 120, every_ms = 2000 }
+
+[[step]]
+instance = 1
+expect_log = { contains = ["arena_rounds: Round 1: fight!", "arena_rounds: Round 3: fight!"], absent = ["get-up write failed", "spawn move failed (force true)", "bench move failed (force true)", "night_match: LOCAL defeated"], since = "run" }
+
+[[step]]
+instance = 3
+expect_log = { contains = ["arena_rounds: Round 3: fight!"], absent = ["get-up write failed", "spawn move failed (force true)", "bench move failed (force true)", "night_match: LOCAL defeated"], since = "mark:rounds" }

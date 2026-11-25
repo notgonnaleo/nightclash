@@ -52,14 +52,60 @@ pub(crate) const ARENA_TABLE: (i32, u32) = (30_000, 10_007_305);
 /// ARENA-4: where a living bot waits between a round end and the reset, so it cannot hit the frozen or downed LOCAL behind the black
 /// screen (Heolstor's arena: flat, centred on (0, 0, 0), at least ±150 m, MEMORY_MAP §27; the spawns are on the x axis).
 pub(crate) const ARENA_PARK: [f32; 3] = [0.0, 3.0, 120.0];
+/// ARENA-6: where the living bot allies wait between a round end and the reset: on the other side of the arena from the enemy bots'
+/// [`ARENA_PARK`], so the two parked groups do not fight (240 m apart).
+pub(crate) const ARENA_PARK_ALLY: [f32; 3] = [0.0, 3.0, -120.0];
 /// ARENA-4: a bot this close (horizontal metres) to its spawn stands on it.
 const ON_SPAWN_M: f32 = 8.0;
+/// ARENA-6: the team value of a bot ally: the game's own ally value (a bot spawns on it, `World::rival_bots`; LOCAL is on it in an
+/// expedition), so it fights for LOCAL and never hits it (team relation (2, 2) = Friend, MEMORY_MAP §4 / §10).
+pub(crate) const ARENA_ALLY_TEAM: u8 = 2;
+/// ARENA-6: the team value of the enemy bots in a Duo / Trio match against bots. Not 29: (29, 29) is Rival, so two enemy bots would
+/// fight each other. 6 (Enemy) is hostile to 2 both ways (MEMORY_MAP §10: (2, 6) and (6, 2) = Enemy) and a character on 6 cannot hurt
+/// another on 6 (MEMORY_MAP §4: a player set to 6 cannot damage enemies). `[HYPOTHESIS: the bot AI on 6 attacks LOCAL and the ally
+/// bots and leaves its teammates alone; check in a Duo match against bots]`. A Solo match (one bot) keeps the proven rival value (29).
+pub(crate) const ARENA_ENEMY_TEAM: u8 = 6;
+
+/// ARENA-6: a bot's place in an Arena match against bots: on LOCAL's side (`ally`, team A, slots 1.. next to LOCAL's 0) or on the
+/// enemy side (team B, slots 0..).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Role {
+    pub ally: bool,
+    pub slot: u8,
+}
+
+/// ARENA-6 (pure): the places of a match of `size` against `size` (1..=3), in the order new bots take them: the enemies first (so Solo
+/// is the one enemy of ARENA-4), then the allies.
+pub(crate) fn arena_roles(size: u8) -> Vec<Role> {
+    let size = size.clamp(1, 3);
+    (0..size)
+        .map(|slot| Role { ally: false, slot })
+        .chain((1..size).map(|slot| Role { ally: true, slot }))
+        .collect()
+}
+
+/// ARENA-6 (pure): the spawn of a place: the arena's spawn of its team and slot (`game::arenacard`; LOCAL, with no roster team in a
+/// match against bots, is team A slot 0).
+pub(crate) fn role_spawn(r: Role) -> [f32; 3] {
+    crate::game::arenacard::spawn_for(Some(u8::from(!r.ally)), r.slot).0
+}
+
+/// ARENA-6 (pure): where a living bot of this place waits between a round end and the reset.
+pub(crate) fn role_park(r: Role) -> [f32; 3] {
+    if r.ally {
+        ARENA_PARK_ALLY
+    } else {
+        ARENA_PARK
+    }
+}
 
 /// ARENA-4: what the director needs from the Arena this tick.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ArenaIn {
-    /// This expedition is an Arena match against a bot.
+    /// This expedition is an Arena match against bots.
     pub on: bool,
+    /// ARENA-6: its team size (1 Solo, 2 Duo, 3 Trio; `mm::arena_bots_size`).
+    pub size: u8,
     /// LOCAL stands on its spawn in the arena (the bot is asked for only then).
     pub placed: bool,
     /// The round events so far (`arenarounds::bot_events`).
@@ -68,9 +114,10 @@ pub(crate) struct ArenaIn {
 
 /// ARENA-4: the bot's spawn: B of `game::arenacard` (LOCAL has no roster team in a match against a bot, so it stands on A; a unit test
 /// keeps the two equal).
+#[cfg(test)]
 pub(crate) const ARENA_BOT_SPAWN: [f32; 3] = [15.0, 3.0, 0.0];
 
-/// ARENA-4: the bot the Arena fights, as this feature publishes it every tick (read by `game::arenarounds`, dev only).
+/// ARENA-4: a bot the Arena match has, as this feature publishes it every tick (read by `game::arenarounds`). ARENA-6: allies too.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ArenaBot {
     pub handle: u64,
@@ -78,6 +125,10 @@ pub(crate) struct ArenaBot {
     pub full_hp: u32,
     /// Seen on its spawn since the last round end.
     pub ready: bool,
+    /// ARENA-6: on LOCAL's side.
+    pub ally: bool,
+    /// ARENA-6: dead or gone from the bot set (beaten for the rest of the round; replaced at the reset).
+    pub out: bool,
 }
 
 /// ARENA-4: round events from `game::arenarounds` (counters since the DLL loaded; the director remembers the values it has seen).
@@ -190,6 +241,10 @@ pub(crate) struct Kept {
     pub replaced: bool,
     /// ARENA-4: its HP when first seen above 0 (its full HP: the max-HP field reads 1/3, MEMORY_MAP §18).
     pub full_hp: u32,
+    /// ARENA-6: its place in an Arena match against bots (`None` outside the Arena).
+    pub role: Option<Role>,
+    /// ARENA-4: it has stood on its spawn since the last round end.
+    pub arena_ready: bool,
 }
 
 impl Kept {
@@ -208,6 +263,8 @@ impl Kept {
             death: None,
             replaced: false,
             full_hp: 0,
+            role: None,
+            arena_ready: false,
         }
     }
 }
@@ -246,8 +303,6 @@ pub(crate) struct BotFill {
     arena: ArenaIn,
     /// ARENA-4: the round events already handled (taken at the first active tick of the match).
     arena_seen: Option<BotEvents>,
-    /// ARENA-4: the current bot has stood on its spawn since the last round end.
-    arena_ready: bool,
     /// ARENA-4: the match is decided: no more bots.
     arena_done: bool,
 }
@@ -272,7 +327,6 @@ impl BotFill {
             hunt: true,
             arena: ArenaIn::default(),
             arena_seen: None,
-            arena_ready: false,
             arena_done: false,
         }
     }
@@ -282,23 +336,48 @@ impl BotFill {
         self.arena = a;
     }
 
-    /// ARENA-4: the current Arena bot (the last kept one that is not replaced, once seen), for `arenarounds`.
-    pub(crate) fn arena_bot(&self) -> Option<ArenaBot> {
+    /// ARENA-4 / ARENA-6: the Arena's bots that play this round (kept, not replaced, seen once), for `arenarounds`.
+    pub(crate) fn arena_bots(&self) -> Vec<ArenaBot> {
         if !self.arena.on {
-            return None;
+            return Vec::new();
         }
-        self.current()
-            .filter(|k| k.seen && !k.gone)
-            .map(|k| ArenaBot {
-                handle: k.handle,
-                full_hp: k.full_hp,
-                ready: self.arena_ready,
+        self.kept
+            .iter()
+            .filter(|k| !k.replaced && k.seen)
+            .filter_map(|k| {
+                k.role.map(|r| ArenaBot {
+                    handle: k.handle,
+                    full_hp: k.full_hp,
+                    ready: k.arena_ready,
+                    ally: r.ally,
+                    out: k.gone || k.dead,
+                })
+            })
+            .collect()
+    }
+
+    /// ARENA-4: the first enemy bot still in (the Solo match's one bot; tests).
+    #[cfg(test)]
+    pub(crate) fn arena_bot(&self) -> Option<ArenaBot> {
+        self.arena_bots().into_iter().find(|b| !b.ally && !b.out)
+    }
+
+    /// ARENA-6: every place of the match is held by a bot that has stood on its spawn since the last round end (a round start waits for
+    /// it).
+    pub(crate) fn arena_all_ready(&self) -> bool {
+        self.arena.on
+            && arena_roles(self.arena.size).iter().all(|r| {
+                self.kept
+                    .iter()
+                    .any(|k| !k.replaced && k.role == Some(*r) && k.arena_ready)
             })
     }
 
-    /// ARENA-4: the last kept bot that still plays.
-    fn current(&self) -> Option<&Kept> {
-        self.kept.iter().rev().find(|k| !k.replaced)
+    /// ARENA-6: the first place no kept bot holds (a new bot takes it).
+    fn free_role(&self) -> Option<Role> {
+        arena_roles(self.arena.size)
+            .into_iter()
+            .find(|r| !self.kept.iter().any(|k| !k.replaced && k.role == Some(*r)))
     }
 
     pub(crate) fn want(&self) -> usize {
@@ -354,12 +433,14 @@ impl BotFill {
         // ARENA-4: the Arena's bot is asked for only once LOCAL stands on its spawn (after the warp's map load).
         let active = (mode == GameMode::Offline || self.bots_match || (arena && self.arena.placed))
             && world.in_expedition();
-        if active && arena && self.want != 1 && self.stage == Stage::Idle {
+        let size = self.arena.size.clamp(1, 3);
+        let arena_want = usize::from(2 * size - 1);
+        if active && arena && self.want != arena_want && self.stage == Stage::Idle {
             tracing::info!(
-                "bots: Arena match against a bot: 1 bot (table {})",
+                "bots: Arena match against bots: {size} vs {size}, {arena_want} bot(s) (table {})",
                 ARENA_TABLE.0
             );
-            self.want = 1;
+            self.want = arena_want;
         } else if active
             && !arena
             && self.bots_match
@@ -416,13 +497,22 @@ impl BotFill {
                     for (slot, h) in fresh {
                         self.handled.push(h);
                         if self.active() < self.want {
-                            self.kept.push(Kept::new(h));
+                            let role = if arena { self.free_role() } else { None };
+                            self.kept.push(Kept {
+                                role,
+                                ..Kept::new(h)
+                            });
                             ctx.bot_writes.push(BotWrite::ForgetSlot(slot));
                             tracing::info!(
-                                "bots: round {}: kept bot 0x{h:X} (slot {slot}); {} of {}",
+                                "bots: round {}: kept bot 0x{h:X} (slot {slot}); {} of {}{}",
                                 n + 1,
                                 self.active(),
-                                self.want
+                                self.want,
+                                role.map_or(String::new(), |r| format!(
+                                    "; Arena {} slot {}",
+                                    if r.ally { "ally" } else { "enemy" },
+                                    r.slot
+                                ))
                             );
                         } else {
                             self.extra.push((h, false));
@@ -472,38 +562,45 @@ impl BotFill {
         }
     }
 
-    /// ARENA-4: the Arena's bot follows the rounds (`arenarounds` events): parked far away at a round end; at the reset healed and put
-    /// back on its spawn, or replaced when dead; put at 0 HP when the match is decided. A new bot is put on its spawn once. A replaced
-    /// bot that comes back to life is put at 0 HP again.
+    /// ARENA-4 / ARENA-6: the Arena's bots follow the rounds (`arenarounds` events): parked at a round end (allies and enemies on
+    /// opposite sides); at the reset healed and put back on their spawns, or replaced when dead; put at 0 HP when the match is decided.
+    /// A new bot is put on the spawn of its place once. A replaced bot that comes back to life is put at 0 HP again.
     fn arena_step(&mut self, world: &World, ctx: &mut Ctx) {
         let ev = self.arena.events;
         let seen = *self.arena_seen.get_or_insert(ev);
         self.arena_seen = Some(ev);
-        let spawn = ARENA_BOT_SPAWN;
-        let cur = self.kept.iter().rposition(|k| !k.replaced);
+        let round_end = ev.round_ends != seen.round_ends;
+        let reset = ev.resets != seen.resets && !self.arena_done;
+        let decided = ev.decided != seen.decided;
         let live = |k: &Kept| {
             world
                 .bot(k.handle)
                 .filter(|b| b.hp > 0 && k.seen && !k.gone)
+                .copied()
         };
-        if ev.round_ends != seen.round_ends {
-            self.arena_ready = false;
-            if let Some(b) = cur.and_then(|i| live(&self.kept[i])) {
-                tracing::info!(
-                    "bots: Arena round over: bot 0x{:X} parked until the reset",
-                    b.handle
-                );
-                ctx.bot_writes.push(BotWrite::Put {
-                    chr: b.chr,
-                    handle: b.handle,
-                    to: ARENA_PARK,
-                });
+        let mut lost = 0;
+        for k in self.kept.iter_mut().filter(|k| !k.replaced) {
+            let Some(role) = k.role else {
+                continue;
+            };
+            let b = live(k);
+            if round_end {
+                k.arena_ready = false;
+                if let Some(b) = b {
+                    tracing::info!(
+                        "bots: Arena round over: bot 0x{:X} parked until the reset",
+                        b.handle
+                    );
+                    ctx.bot_writes.push(BotWrite::Put {
+                        chr: b.chr,
+                        handle: b.handle,
+                        to: role_park(role),
+                    });
+                }
             }
-        }
-        if ev.resets != seen.resets && !self.arena_done {
-            match cur.map(|i| (i, live(&self.kept[i]))) {
-                Some((i, Some(b))) => {
-                    let full = self.kept[i].full_hp.max(b.hp);
+            if reset {
+                if let Some(b) = b {
+                    let full = k.full_hp.max(b.hp);
                     tracing::info!(
                         "bots: Arena reset: bot 0x{:X} back to its spawn, HP {} -> {full}",
                         b.handle,
@@ -517,47 +614,49 @@ impl BotFill {
                     ctx.bot_writes.push(BotWrite::Put {
                         chr: b.chr,
                         handle: b.handle,
-                        to: spawn,
+                        to: role_spawn(role),
+                    });
+                } else {
+                    k.replaced = true;
+                    lost += 1;
+                }
+            }
+            if decided {
+                k.arena_ready = false;
+                if let Some(b) = b {
+                    tracing::info!(
+                        "bots: Arena match decided: bot 0x{:X} removed (HP 0)",
+                        b.handle
+                    );
+                    ctx.bot_writes.push(BotWrite::Hp {
+                        chr: b.chr,
+                        handle: b.handle,
+                        hp: 0,
                     });
                 }
-                other => {
-                    if let Some((i, None)) = other {
-                        self.kept[i].replaced = true;
-                    }
-                    tracing::info!(
-                        "bots: Arena reset: no living bot; a new one for the next round"
-                    );
-                }
             }
         }
-        if ev.decided != seen.decided {
+        if reset && lost > 0 {
+            tracing::info!("bots: Arena reset: {lost} bot(s) dead; new ones for the next round");
+        }
+        if decided {
             self.arena_done = true;
-            self.arena_ready = false;
-            if let Some(b) = cur.and_then(|i| live(&self.kept[i])) {
-                tracing::info!(
-                    "bots: Arena match decided: bot 0x{:X} removed (HP 0)",
-                    b.handle
-                );
-                ctx.bot_writes.push(BotWrite::Hp {
-                    chr: b.chr,
-                    handle: b.handle,
-                    hp: 0,
-                });
-            }
         }
-        for (i, k) in self.kept.iter_mut().enumerate() {
+        for k in &mut self.kept {
             let Some(b) = world.bot(k.handle) else {
                 continue;
             };
-            if Some(i) == cur && !k.spread && b.pos.is_some() && !self.arena_done {
-                // A new bot: on its spawn once (the game brings it next to LOCAL).
-                k.spread = true;
-                ctx.bot_writes.push(BotWrite::Put {
-                    chr: b.chr,
-                    handle: k.handle,
-                    to: spawn,
-                });
-            } else if Some(i) != cur && b.hp > 0 && k.seen {
+            if !k.replaced && !k.spread && b.pos.is_some() && !self.arena_done {
+                if let Some(role) = k.role {
+                    // A new bot: on its spawn once (the game brings it next to LOCAL).
+                    k.spread = true;
+                    ctx.bot_writes.push(BotWrite::Put {
+                        chr: b.chr,
+                        handle: k.handle,
+                        to: role_spawn(role),
+                    });
+                }
+            } else if k.replaced && b.hp > 0 && k.seen {
                 tracing::info!("bots: Arena: old bot 0x{:X} is alive again; HP 0", k.handle);
                 ctx.bot_writes.push(BotWrite::Hp {
                     chr: b.chr,
@@ -566,16 +665,26 @@ impl BotFill {
                 });
             }
         }
-        // Standing on its spawn (seen after the put) makes the next round start (not on the tick a round ended: the park is not
-        // written yet).
-        if let Some(i) = cur.filter(|_| ev.round_ends == seen.round_ends) {
-            let k = &self.kept[i];
-            let on_spawn = live(k).and_then(|b| b.pos).is_some_and(|p| {
-                ((p[0] - spawn[0]).powi(2) + (p[2] - spawn[2]).powi(2)).sqrt() <= ON_SPAWN_M
-            });
-            if on_spawn && k.spread && !self.arena_ready && !self.arena_done {
-                self.arena_ready = true;
-                tracing::info!("bots: Arena bot 0x{:X} stands on its spawn", k.handle);
+        // Standing on its spawn (seen after the put) makes the bot ready for the next round start (not on the tick a round ended: the
+        // park is not written yet).
+        if !round_end && !self.arena_done {
+            for k in self.kept.iter_mut().filter(|k| !k.replaced) {
+                let Some(role) = k.role else {
+                    continue;
+                };
+                let spawn = role_spawn(role);
+                let on_spawn = live(k).and_then(|b| b.pos).is_some_and(|p| {
+                    ((p[0] - spawn[0]).powi(2) + (p[2] - spawn[2]).powi(2)).sqrt() <= ON_SPAWN_M
+                });
+                if on_spawn && k.spread && !k.arena_ready {
+                    k.arena_ready = true;
+                    tracing::info!(
+                        "bots: Arena bot 0x{:X} stands on its spawn ({} slot {})",
+                        k.handle,
+                        if role.ally { "ally" } else { "enemy" },
+                        role.slot
+                    );
+                }
             }
         }
     }
@@ -647,7 +756,9 @@ impl BotFill {
                 });
             }
         }
-        let target = self.rival_team;
+        let rival_team = self.rival_team;
+        // ARENA-6: in a Duo / Trio match against bots each bot's team follows its place; Solo keeps the rival value.
+        let duo_trio = arena && self.arena.size > 1;
         let rivals: Vec<u64> = world.rival_bots().map(|b| b.handle).collect();
         let sectors = self.want.max(self.kept.len());
         let spread_on = self.spread && !arena;
@@ -732,6 +843,11 @@ impl BotFill {
                     sectors,
                 });
             }
+            let target = match k.role {
+                Some(r) if duo_trio && r.ally => ARENA_ALLY_TEAM,
+                Some(_) if duo_trio => ARENA_ENEMY_TEAM,
+                _ => rival_team,
+            };
             if b.team != target {
                 ctx.bot_writes.push(BotWrite::Team {
                     chr: b.chr,
@@ -792,7 +908,6 @@ impl BotFill {
 
     fn reset(&mut self) {
         self.arena_seen = None;
-        self.arena_ready = false;
         self.arena_done = false;
         self.over = true;
         self.waiting_since = None;
@@ -824,11 +939,12 @@ impl BotFill {
         );
         if self.arena.on {
             out.push_str(&format!(
-                ", Arena bot {}",
-                match (self.arena_done, self.arena_ready) {
+                ", Arena {0} vs {0}: {1}",
+                self.arena.size,
+                match (self.arena_done, self.arena_all_ready()) {
                     (true, _) => "done (match decided)",
-                    (false, true) => "on its spawn",
-                    (false, false) => "not on its spawn",
+                    (false, true) => "every bot on its spawn",
+                    (false, false) => "not every bot on its spawn",
                 }
             ));
         }
@@ -1182,6 +1298,7 @@ mod tests {
     fn arena_in(round_ends: u32, resets: u32, decided: u32) -> ArenaIn {
         ArenaIn {
             on: true,
+            size: 1,
             placed: true,
             events: BotEvents {
                 round_ends,
@@ -1276,7 +1393,7 @@ mod tests {
         d.step(2_050, GameMode::BattleRoyale, &w, &mut Ctx::default());
         assert!(d.arena_bot().unwrap().ready);
         assert!(
-            d.roster().contains("Arena bot on its spawn"),
+            d.roster().contains("every bot on its spawn"),
             "{}",
             d.roster()
         );
@@ -1297,7 +1414,7 @@ mod tests {
         assert_eq!(puts(&ctx), vec![(0xA0, ARENA_BOT_SPAWN)]);
         assert_eq!(
             ARENA_BOT_SPAWN,
-            crate::game::arenacard::spawn_for(Some(1)).0
+            crate::game::arenacard::spawn_for(Some(1), 0).0
         );
     }
 
@@ -1386,6 +1503,206 @@ mod tests {
         d.step(25_000, GameMode::BattleRoyale, &w2, &mut ctx);
         d.step(30_000, GameMode::BattleRoyale, &w2, &mut ctx);
         assert!(ctx.flags.is_empty(), "no bot after the match");
+    }
+
+    #[test]
+    fn duo_and_trio_places_enemies_first_then_allies_next_to_local() {
+        let duo = arena_roles(2);
+        assert_eq!(
+            duo,
+            vec![
+                Role {
+                    ally: false,
+                    slot: 0
+                },
+                Role {
+                    ally: false,
+                    slot: 1
+                },
+                Role {
+                    ally: true,
+                    slot: 1
+                },
+            ]
+        );
+        assert_eq!(
+            arena_roles(1),
+            vec![Role {
+                ally: false,
+                slot: 0
+            }]
+        );
+        let trio = arena_roles(3);
+        assert_eq!(trio.len(), 5);
+        assert_eq!(role_spawn(trio[0]), ARENA_BOT_SPAWN, "Solo's bot place");
+        // Allies stand on LOCAL's side (A, x < 0), enemies on B; nobody on another's spawn or on LOCAL's (team A slot 0).
+        let local = crate::game::arenacard::spawn_for(None, 0).0;
+        let mut spots: Vec<[f32; 3]> = trio.iter().map(|r| role_spawn(*r)).collect();
+        for (r, p) in trio.iter().zip(&spots) {
+            assert_eq!(r.ally, p[0] < 0.0, "{r:?} at {p:?}");
+            assert_ne!(*p, local);
+        }
+        spots.dedup();
+        assert_eq!(spots.len(), 5);
+        assert_ne!(role_park(trio[0]), role_park(trio[3]), "parked apart");
+    }
+
+    /// ARENA-6: a Duo match against bots with its three bots kept (two table rounds) and seen.
+    fn arena_duo(w: &mut World) -> BotFill {
+        let mut d = BotFill::new(0, 29);
+        d.set_arena(ArenaIn {
+            size: 2,
+            ..arena_in(0, 0, 0)
+        });
+        let mut ctx = Ctx::default();
+        d.step(0, GameMode::BattleRoyale, &world([E, E]), &mut ctx);
+        assert_eq!(d.want(), 3);
+        assert_eq!(ctx.flags, vec![(ARENA_TABLE.1, true)]);
+        // The game brings new bots next to LOCAL; here far from every spawn, so none counts as standing on one before its put.
+        *w = world([0xA0, 0xA1]);
+        w.bot_chrs = vec![arena_bot(0xA0, 900, 60.0), arena_bot(0xA1, 900, 61.0)];
+        d.step(50, GameMode::BattleRoyale, w, &mut Ctx::default());
+        // The second table round brings the third bot (its slot mate is not needed).
+        let mut ctx = Ctx::default();
+        d.step(50 + ROUND_GAP_MS, GameMode::BattleRoyale, w, &mut ctx);
+        assert_eq!(ctx.flags, vec![(ARENA_TABLE.1, true)]);
+        let mut w2 = world([0xA2, 0xA3]);
+        w2.bot_chrs = w.bot_chrs.clone();
+        w2.bot_chrs.push(arena_bot(0xA2, 900, 62.0));
+        w2.bot_chrs.push(arena_bot(0xA3, 900, 63.0));
+        d.step(
+            100 + ROUND_GAP_MS,
+            GameMode::BattleRoyale,
+            &w2,
+            &mut Ctx::default(),
+        );
+        d.step(
+            100 + 2 * ROUND_GAP_MS,
+            GameMode::BattleRoyale,
+            &w2,
+            &mut Ctx::default(),
+        );
+        assert_eq!(d.stage, Stage::Done);
+        w2.bot_chrs.pop();
+        *w = w2;
+        d
+    }
+
+    #[test]
+    fn a_duo_against_bots_keeps_two_enemies_on_team_6_and_one_ally_on_team_2() {
+        let mut w = World::default();
+        let mut d = arena_duo(&mut w);
+        let roles: Vec<(u64, Option<Role>)> = d.kept.iter().map(|k| (k.handle, k.role)).collect();
+        assert_eq!(
+            roles,
+            vec![
+                (
+                    0xA0,
+                    Some(Role {
+                        ally: false,
+                        slot: 0
+                    })
+                ),
+                (
+                    0xA1,
+                    Some(Role {
+                        ally: false,
+                        slot: 1
+                    })
+                ),
+                (
+                    0xA2,
+                    Some(Role {
+                        ally: true,
+                        slot: 1
+                    })
+                ),
+            ]
+        );
+        let mut ctx = Ctx::default();
+        d.step(3_000, GameMode::BattleRoyale, &w, &mut ctx);
+        let teams: Vec<(u64, u8)> = ctx
+            .bot_writes
+            .iter()
+            .filter_map(|b| match b {
+                BotWrite::Team { handle, team, .. } => Some((*handle, *team)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            teams,
+            vec![
+                (0xA0, ARENA_ENEMY_TEAM),
+                (0xA1, ARENA_ENEMY_TEAM),
+                (0xA2, ARENA_ALLY_TEAM)
+            ]
+        );
+        let bots = d.arena_bots();
+        assert_eq!(bots.iter().filter(|b| b.ally).count(), 1);
+        assert_eq!(bots.iter().filter(|b| !b.ally).count(), 2);
+        // Ready only once all three stand on their own spawns.
+        assert!(!d.arena_all_ready());
+        for (i, r) in arena_roles(2).into_iter().enumerate() {
+            w.bot_chrs[i].pos = Some(role_spawn(r));
+            d.step(
+                3_100 + i as u64,
+                GameMode::BattleRoyale,
+                &w,
+                &mut Ctx::default(),
+            );
+            assert_eq!(d.arena_all_ready(), i == 2, "after bot {i}");
+        }
+    }
+
+    #[test]
+    fn a_duo_reset_heals_the_living_and_replaces_a_dead_ally() {
+        let mut w = World::default();
+        let mut d = arena_duo(&mut w);
+        for (i, r) in arena_roles(2).into_iter().enumerate() {
+            w.bot_chrs[i].pos = Some(role_spawn(r));
+        }
+        d.step(3_000, GameMode::BattleRoyale, &w, &mut Ctx::default());
+        assert!(d.arena_all_ready());
+        // The ally dies; the round ends: the living enemies are parked on their side, the dead ally is not moved.
+        w.bot_chrs[2].hp = 0;
+        d.step(3_100, GameMode::BattleRoyale, &w, &mut Ctx::default());
+        assert!(d.arena_bots().iter().any(|b| b.ally && b.out));
+        d.set_arena(ArenaIn {
+            size: 2,
+            ..arena_in(1, 0, 0)
+        });
+        let mut ctx = Ctx::default();
+        d.step(3_200, GameMode::BattleRoyale, &w, &mut ctx);
+        assert_eq!(puts(&ctx), vec![(0xA0, ARENA_PARK), (0xA1, ARENA_PARK)]);
+        // The reset: enemies healed and back; one new bot asked for, which takes the ally's place.
+        d.set_arena(ArenaIn {
+            size: 2,
+            ..arena_in(1, 1, 0)
+        });
+        let mut ctx = Ctx::default();
+        d.step(8_000, GameMode::BattleRoyale, &w, &mut ctx);
+        assert_eq!(hps(&ctx), vec![(0xA0, 900), (0xA1, 900)]);
+        assert!(!d.arena_all_ready(), "the ally's place is empty");
+        let mut ctx = Ctx::default();
+        d.step(8_050, GameMode::BattleRoyale, &w, &mut ctx);
+        assert_eq!(ctx.flags, vec![(ARENA_TABLE.1, true)]);
+        let mut w2 = world([0xB0, 0xB1]);
+        w2.bot_chrs = w.bot_chrs.clone();
+        w2.bot_chrs.push(arena_bot(0xB0, 880, -14.0));
+        d.step(
+            9_000 + ROUND_GAP_MS,
+            GameMode::BattleRoyale,
+            &w2,
+            &mut Ctx::default(),
+        );
+        let k = d.kept.iter().find(|k| k.handle == 0xB0).unwrap();
+        assert_eq!(
+            k.role,
+            Some(Role {
+                ally: true,
+                slot: 1
+            })
+        );
     }
 
     #[test]

@@ -246,7 +246,9 @@ external accounts (YouTube `@nightreignpvp`, Discord). Launchers built before th
 and reach the new one through GitHub's redirect, so **no repository may ever be created as `notgonnaleo/nightreign-pvp`**
 (that would end the redirect and cut them off, as the deleted releases repository did on 2026-11-23). The release scripts read
 the repository name from CI or the git remote, so a future rename needs no script edit. The README shows a flame icon (`docs/brand/flame-light.svg` / `flame-dark.svg`): the silhouette of a game menu icon
-(`MENU_MenuIcon_40411`), so it is FromSoftware's art, not ours; Leonardo plans to redraw it by hand.
+(`MENU_MenuIcon_40411`), so it is FromSoftware's art, not ours. Leonardo, 2026-11-24: the flame is the public icon (YouTube
+profile picture and banner too); Nightclash is a non-profit fan project, so he sees no problem using it. Source files:
+`.claude/experiments/branding/` (gitignored; `make_brand_kit.py`, `make_youtube.py`).
 
 ## 2026-11-24 — License: GPL-3.0-or-later (Leonardo)
 
@@ -257,3 +259,35 @@ are GPL-3.0-compatible (MIT, Apache-2.0, BSD, ISC, Zlib, MPL-2.0, CDLA-Permissiv
 under its own MIT / Apache-2.0 license files, and Seamless Co-op is not bundled. The license does not cover the game's content
 (its art and the data in `gamedata/` and the game-data package taken from or based on its files); the README's License section
 says so. Relicensing later needs every outside contributor's consent.
+
+## 2026-11-24 — Arena Duo / Trio rules (Leonardo)
+
+Arena Duo (2v2) and Trio (3v3) (PROJECT_SCOPE §Arena, TASKS ARENA-5). Leonardo's choices, asked 2026-11-24:
+- **A player beaten while a teammate still fights is out of the round and watches** ("Out, spectate", chosen over a black screen
+  and over a teammate revive: the game's own down / get-up is what broke Arena rounds before, ARENA-HP1). Built first as a
+  sideline seat: frozen, screen on, moved to the team's bench 25 m behind its spawn, facing the fight. A camera that follows a
+  teammate (as the Battle Royale spectate) needs the body hidden from the others, which is unproven for a living player at 1 HP
+  `[HYPOTHESIS: EMEVD Change Character Enable State 2004:5 / DispMask 2004:26 on the player; not tried]`.
+- **A leaver's team plays on short-handed** (chosen over "the whole team loses"); the match is lost only when the whole team is gone.
+- **Prove it with four instances on one PC** (chosen over a 2v1 test mode and over "friend session only"): `nro` takes a fourth
+  emulated id, whose save was made by playing the new-game start once.
+Agent's rules, not objected to: the round ends when every player of a team is at 1 HP (a player once beaten stays beaten for the
+round, so a heal on the bench changes nothing); at the time limit each side's **mean** HP fraction decides (= the sum for equal
+teams; a short-handed team keeps a fair number); the host's verdict carries the host's roster team, so its teammates take its
+outcome and only the rivals the opposite; teammates spawn 4 m apart; Duo / Trio queues fill a short party with random players as
+in Battle Royale (MM-FILL); bots stay Solo only.
+
+## 2026-11-24 — Arena: the beaten player watches its team; Duo / Trio against bots (Leonardo)
+
+Replaces "built first as a sideline seat" of "Arena Duo / Trio rules" above (TASKS ARENA-6). Leonardo, after the four-instance 2v2:
+- **A beaten player spectates its living teammates, as in Battle Royale** (the bench was not what he wanted): no control, the camera
+  on a teammate, the spectator's switch inputs change who. Built as: frozen, collision and gravity off, moved to a far bench, the
+  character disabled there, then the body moved onto the watched teammate every tick (the camera follows it). Leonardo proposed the same idea ("alive,
+  invisible and locked, tracking the player alive"). The two-instance lab (2026-11-25) showed the disable hides the body only on its
+  own game but freezes it in place for the others, so it is hidden on a far bench before it follows. **If the 2v2 still shows the
+  body to the others**, **the fallback is a real death** (Leonardo chose it over keeping the bench): the game hides a dead, held
+  body on every game (Battle Royale, proven on real Steam), at the cost of the comeback and level loss at the reset.
+- **Bots On with Duo / Trio on the Arena card = LOCAL plus bot allies against a bot team** (2v2: one ally vs two bots; 3v3: two
+  allies vs three), offline as the Solo bot match (chosen over "LOCAL alone against a bot team"; friends + bots stays impossible,
+  BOT-0). Agent's rules: allies keep the game's ally team 2, enemy bots get 6 so they do not fight each other (29 makes every bot a
+  rival of every other); a bot is beaten at 0 HP and replaced at the reset, as in Solo.

@@ -32,9 +32,16 @@
 //! - **One ultimate per round ([`UltOnce`], Leonardo 2026-11-17).** Every round starts with LOCAL's gauge full; once it is used it
 //!   cannot charge again until the next round's reset.
 //! - **ARENA-4, against a bot.** In an Arena match against a bot ([`crate::mm::arena_bots`]) the rival is the bot the bots feature
-//!   publishes ([`set_arena_bot`]): down at 0 HP, its HP in percent of the HP it had at its spawn. LOCAL judges the round limit (no
+//!   publishes ([`set_arena_bots`]): down at 0 HP, its HP in percent of the HP it had at its spawn. LOCAL judges the round limit (no
 //!   session). The round events ([`bot_events`]) tell the bots feature when to park, heal, replace or remove the bot, and every fade-in
-//!   that starts a round waits (at most [`RIVAL_WAIT_MS`]) until the bot stands on its spawn.
+//!   that starts a round waits (at most [`RIVAL_WAIT_MS`]) until the bot stands on its spawn. ARENA-6: Duo / Trio against bots
+//!   ([`crate::mm::arena_bots_size`]): the bot allies are LOCAL's teammates and the enemy bots its rivals, judged like players.
+//! - **ARENA-6: a beaten player watches its team.** LOCAL beaten while a teammate (player or bot ally) still fights is frozen, loses
+//!   collision and gravity (flag [`FLAG_GHOST`]) and is moved to its team's far bench; once the others have that position its
+//!   character is disabled (flag [`FLAG_HIDE`]: not drawn on its own game, and its position no longer reaches the others, who keep
+//!   seeing it on the bench), then its body follows a living teammate every tick, so its camera shows that teammate (as the Battle
+//!   Royale spectator does with a dead body); the spectator's switch inputs change who is watched ([`watch_stage`], [`HIDE_BODY`],
+//!   console `arena_hide`). Both flags are off again at the reset.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::Mutex;
@@ -71,6 +78,11 @@ pub(crate) const FADE_IN_MS: u64 = 6_000;
 pub(crate) const BEATEN_HP: u32 = 1;
 /// ARENA-4: a round start waits at most this long for the bot on its spawn (then goes on without it).
 pub(crate) const RIVAL_WAIT_MS: u64 = 30_000;
+/// The screen comes back only once LOCAL's move to its spawn is written, waiting at most this long past [`FADE_IN_MS`]. A player
+/// frozen mid-attack at the round end has a tilted rotation: the move is refused until it is forced after [`PLACE_FORCE_AFTER_MS`],
+/// which is also the gap from the reset to the fade-in, so the forced move landed 0.1-0.3 s into the next round (2v2 of 2026-11-25:
+/// a 7.4 m and a 33.8 m jump in sight, after "fight!").
+pub(crate) const PLACE_WAIT_MS: u64 = 3_000;
 /// The get-up is asked the way a teammate's revive does it: the revive bar `+0x714` to 0 and the pause `+0x71C` up, every tick while
 /// LOCAL is downed in the get-up window. The player script then plays its revival, the animation sets "revive completed" and the
 /// game's state 2 follows (MEMORY_MAP §6). Never the byte `+0x732` itself: it makes the code lead, and a write later than ~3.5 s after
@@ -150,6 +162,20 @@ const FLAG_FADE_IN_FROZEN: u32 = 10_007_517;
 const FLAG_NEAR_DEATH: u32 = 10_007_519;
 /// ARENA-HP1: while ON this game's player is immortal (event 99100920, re-applied every 0.5 s): a hit stops at 1 HP, no down.
 const FLAG_IMMORTAL: u32 = 10_007_520;
+/// ARENA-6: while ON this game's player has no collision and no gravity (event 99100921: Change Character Collision State 2004:39 and
+/// Set Character Gravity 2004:10, re-applied every 0.5 s), so a spectating body that follows a teammate neither pushes it nor falls.
+const FLAG_GHOST: u32 = 10_007_521;
+/// ARENA-6: while ON this game's player is disabled (event 99100922: Change Character Enable State 2004:5). `[VERIFIED:
+/// mi-arena-hide-lab 2026-11-25, two instances]`: on its own game the body is not drawn and the camera still moves with it (a `tp`);
+/// the other game keeps drawing it, frozen at the position it had when it was disabled (its position updates stop until it is
+/// enabled again). So the body is put on the far bench first and disabled only once the others have that position ([`watch_stage`]).
+const FLAG_HIDE: u32 = 10_007_522;
+/// ARENA-6: from the bench move to the hide: the bench position reaches the other games (they draw the body there from then on).
+pub(crate) const HIDE_AFTER_MS: u64 = 1_500;
+/// ARENA-6: from the hide to the first follow move: the hide event has run (it applies on the flag's change; re-applied every 0.5 s).
+pub(crate) const FOLLOW_AFTER_MS: u64 = 700;
+/// ARENA-6: whether a spectating body is also disabled ([`FLAG_HIDE`]); console `arena_hide 0|1`.
+static HIDE_BODY: AtomicBool = AtomicBool::new(true);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Phase {
@@ -157,7 +183,7 @@ pub(crate) enum Phase {
     Off,
     /// LOCAL stands on its spawn behind the black screen since `at_ms`.
     Starting { at_ms: u64 },
-    /// A round is on; `armed` once both players have been seen up (a down before that is the last round's).
+    /// A round is on; `armed` once every player has been seen up (a down before that is the last round's).
     Fighting { armed: bool },
     /// The round ended with a down at `at_ms`; `lost` = LOCAL went down; `stage` counts the steps done (fade out, reset).
     RoundOver { lost: bool, at_ms: u64, stage: u8 },
@@ -174,6 +200,9 @@ pub(crate) enum Do {
     FadeOut,
     FadeIn,
     FadeInFrozen,
+    /// ARENA-5 / ARENA-6: LOCAL is beaten while a teammate still fights: frozen (screen on); it watches a living teammate (its body
+    /// follows one) or, with nobody to follow, sits on its team's bench.
+    Spectate,
     Revive,
     Reset,
     /// The host's verdict on a timed-out bout (key, outcome from the host's side) for the other game.
@@ -211,24 +240,128 @@ pub(crate) enum Outcome {
 }
 
 impl Outcome {
-    /// The bus value from the host's side (1 won, 2 lost, 3 draw).
-    pub(crate) fn wire(self) -> u32 {
-        match self {
+    /// The bus value from the host's side: bits 0..8 the host's outcome (1 won, 2 lost, 3 draw); ARENA-5: bits 8.. the host's roster
+    /// team + 1 (0 = unknown), so the host's teammates take the host's outcome and only the rivals take the opposite.
+    pub(crate) fn wire(self, host_team: Option<u8>) -> u32 {
+        let o = match self {
             Outcome::Won => 1,
             Outcome::Lost => 2,
             Outcome::Draw => 3,
-        }
+        };
+        o | host_team.map_or(0, |t| (u32::from(t) + 1) << 8)
     }
 
-    /// The other game's outcome from the host's bus value.
-    pub(crate) fn from_host_wire(v: u32) -> Option<Outcome> {
-        match v {
-            1 => Some(Outcome::Lost),
-            2 => Some(Outcome::Won),
-            3 => Some(Outcome::Draw),
-            _ => None,
-        }
+    /// This game's outcome from the host's bus value (pure). `my_team`: this game's roster team. The host's team unknown on either
+    /// side = the 1v1 rule (the other game is the rival).
+    pub(crate) fn from_host_wire(v: u32, my_team: Option<u8>) -> Option<Outcome> {
+        let host = match v & 0xFF {
+            1 => Outcome::Won,
+            2 => Outcome::Lost,
+            3 => Outcome::Draw,
+            _ => return None,
+        };
+        let host_team = (v >> 8).checked_sub(1);
+        let same_team = matches!((host_team, my_team), (Some(h), Some(m)) if h == u32::from(m));
+        Some(match (same_team, host) {
+            (true, o) | (false, o @ Outcome::Draw) => o,
+            (false, Outcome::Won) => Outcome::Lost,
+            (false, Outcome::Lost) => Outcome::Won,
+        })
     }
+}
+
+/// ARENA-5 (pure): a side has lost the round: it has players and every one of them is beaten. A side nobody sees (left, not loaded)
+/// never loses (the 1v1 rule: no rival seen = no round won).
+pub(crate) fn all_beaten(side: &[Seen]) -> bool {
+    !side.is_empty() && side.iter().all(|s| s.down)
+}
+
+/// ARENA-5 (pure): every player of a side is up (and the side has players).
+pub(crate) fn all_up(side: &[Seen]) -> bool {
+    !side.is_empty() && side.iter().all(|s| s.up)
+}
+
+/// ARENA-5 (pure): a side's HP for the time limit: the mean of its players' HP fractions (equal team sizes: the sum of PROJECT_SCOPE
+/// §Arena; a leaver's team keeps its mean, as it plays on short-handed). `None` = nobody seen.
+pub(crate) fn side_hp(fractions: &[f32]) -> Option<f32> {
+    (!fractions.is_empty()).then(|| fractions.iter().sum::<f32>() / fractions.len() as f32)
+}
+
+/// ARENA-6 (pure): LOCAL watches its team now: beaten while a teammate fought on, from then until the reset (the reset puts it back on
+/// its spawn, where it must stand on the floor again).
+pub(crate) fn spectating_now(r: &Rounds) -> bool {
+    r.spectating
+        && match r.phase {
+            Phase::Fighting { .. } => true,
+            Phase::RoundOver { stage, .. } => stage < 2,
+            Phase::Starting { .. } | Phase::Off | Phase::MatchOver => false,
+        }
+}
+
+/// ARENA-6: where a watching LOCAL is: going to the bench, seen there by everyone, hidden there, following a teammate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WatchStage {
+    Parking,
+    Parked,
+    Hidden,
+    Following,
+}
+
+/// ARENA-6 (pure): the stage from the time since the bench move was written (`None` = not yet) and whether the body is hidden at all
+/// (`arena_hide 0`: no hide, it follows at once, drawn on the teammate on every game).
+pub(crate) fn watch_stage(parked_ms: Option<u64>, hide: bool) -> WatchStage {
+    match parked_ms {
+        None => WatchStage::Parking,
+        Some(_) if !hide => WatchStage::Following,
+        Some(t) if t < HIDE_AFTER_MS => WatchStage::Parked,
+        Some(t) if t < HIDE_AFTER_MS + FOLLOW_AFTER_MS => WatchStage::Hidden,
+        Some(_) => WatchStage::Following,
+    }
+}
+
+/// ARENA-6 (pure): the teammate to watch among `cands` (id, world position): the current one while it is still a candidate, the next
+/// / previous by id on a switch input (wraps), else the lowest id. `None` = nobody to watch.
+pub(crate) fn pick_watch(
+    cur: Option<u64>,
+    cands: &[(u64, [f32; 3])],
+    next: bool,
+    prev: bool,
+) -> Option<(u64, [f32; 3])> {
+    let mut ids: Vec<u64> = cands.iter().map(|c| c.0).collect();
+    ids.sort_unstable();
+    let n = ids.len();
+    let id = match (
+        cur.and_then(|c| ids.iter().position(|i| *i == c)),
+        next,
+        prev,
+    ) {
+        _ if n == 0 => return None,
+        (Some(i), true, _) => ids[(i + 1) % n],
+        (Some(i), false, true) => ids[(i + n - 1) % n],
+        (Some(i), false, false) => ids[i],
+        (None, _, _) => ids[0],
+    };
+    cands.iter().find(|c| c.0 == id).copied()
+}
+
+/// `arena_hide [0|1]`: whether a spectating body is also disabled (hidden) or only a ghost (no collision, no gravity).
+pub(crate) fn hide_cmd(args: &[String]) -> Result<String, String> {
+    if let Some(a) = args.first() {
+        let on = match a.as_str() {
+            "0" => false,
+            "1" => true,
+            _ => return Err("arena_hide takes 0 or 1".into()),
+        };
+        HIDE_BODY.store(on, Ordering::Relaxed);
+    }
+    Ok(format!(
+        "arena_hide: a spectating body is {}",
+        if HIDE_BODY.load(Ordering::Relaxed) {
+            "disabled (hidden) and a ghost"
+        } else {
+            "only a ghost (no collision, no gravity), still drawn"
+        }
+    ))
 }
 
 /// ARENA-3: what the round timer needs from the world this tick.
@@ -244,6 +377,8 @@ pub(crate) struct Timer {
     pub limit_ms: u64,
     /// ARENA-4: the rival (a bot) is not on its spawn yet: a fade-in that starts a round waits (at most [`RIVAL_WAIT_MS`]).
     pub rival_missing: bool,
+    /// LOCAL's move back to its spawn is not written yet: the fade-in after a reset waits (at most [`PLACE_WAIT_MS`]).
+    pub unplaced: bool,
 }
 
 /// Console override of the round limit (ms; 0 = the default).
@@ -303,6 +438,8 @@ pub(crate) struct Rounds {
     pub warned: bool,
     /// ARENA-OT: the overtime message was shown in this round.
     pub overtime_said: bool,
+    /// ARENA-5 / ARENA-6: LOCAL was beaten in this round while a teammate fought on, and watches until the round ends.
+    pub spectating: bool,
 }
 
 impl Default for Rounds {
@@ -315,6 +452,7 @@ impl Default for Rounds {
             bouts: 0,
             warned: false,
             overtime_said: false,
+            spectating: false,
         }
     }
 }
@@ -348,7 +486,8 @@ impl Rounds {
         self.step_timed(now_ms, on, local, rival, Timer::default())
     }
 
-    /// One tick (pure). `on`: an Arena match is on and LOCAL stands in the arena. `rival` is `None` when this game sees no rival.
+    /// One 1v1 tick (pure; the tests of the 1v1 rules). `rival` is `None` when this game sees no rival.
+    #[cfg(test)]
     pub(crate) fn step_timed(
         &mut self,
         now_ms: u64,
@@ -357,11 +496,28 @@ impl Rounds {
         rival: Option<Seen>,
         timer: Timer,
     ) -> Vec<Do> {
+        self.step_teams(now_ms, on, local, &[], rival.as_slice(), timer)
+    }
+
+    /// One tick (pure). `on`: an Arena match is on and LOCAL stands in the arena. ARENA-5: `mates` are LOCAL's teammates and `rivals`
+    /// the other team, as this game sees them (a leaver is simply missing: the team plays on short-handed). A round is lost when
+    /// LOCAL and every teammate are beaten, won when every rival is; LOCAL beaten alone watches its team ([`Do::Spectate`]).
+    pub(crate) fn step_teams(
+        &mut self,
+        now_ms: u64,
+        on: bool,
+        local: Seen,
+        mates: &[Seen],
+        rivals: &[Seen],
+        timer: Timer,
+    ) -> Vec<Do> {
         if !on {
             *self = Rounds::default();
             return Vec::new();
         }
-        let rival = rival.unwrap_or_default();
+        let local_out = local.down || self.spectating;
+        let we_lost = local_out && mates.iter().all(|s| s.down);
+        let they_lost = all_beaten(rivals);
         match self.phase {
             Phase::Off => {
                 self.phase = Phase::Starting { at_ms: now_ms };
@@ -381,7 +537,7 @@ impl Rounds {
                 vec![Do::FadeIn, Do::Message("Round 1: fight!".into())]
             }
             Phase::Fighting { armed: false } => {
-                if local.up && rival.up {
+                if local.up && mates.iter().all(|s| s.up) && all_up(rivals) {
                     self.phase = Phase::Fighting { armed: true };
                 }
                 Vec::new()
@@ -394,20 +550,28 @@ impl Rounds {
                 } else {
                     timer.limit_ms
                 };
+                // ARENA-5 / ARENA-6: beaten while a teammate fights on: out of this round, watching the team.
+                if local_out && !we_lost && !self.spectating {
+                    self.spectating = true;
+                    out.push(Do::Spectate);
+                    out.push(Do::Message(
+                        "You are out of this round. Watching your team (mouse buttons or D-pad switch)".into(),
+                    ));
+                }
                 let (outcome, timed) = if t < limit {
                     // The round proper: each game judges the downs it sees.
-                    if local.down {
+                    if we_lost {
                         (Outcome::Lost, false)
-                    } else if rival.down {
+                    } else if they_lost {
                         (Outcome::Won, false)
                     } else if let Some(v) = timer.verdict {
                         (v, true)
                     } else {
                         if !self.warned && limit > WARN_LEFT_MS && t >= limit - WARN_LEFT_MS {
                             self.warned = true;
-                            return vec![Do::Message("One minute left!".into())];
+                            out.push(Do::Message("One minute left!".into()));
                         }
-                        return Vec::new();
+                        return out;
                     }
                 } else {
                     // ARENA-OT: overtime. Each game drains its own player (and the bot); the host alone judges, so a fall to 1 HP on
@@ -419,7 +583,7 @@ impl Rounds {
                         ));
                     }
                     let capped = t >= limit + OVERTIME_MS;
-                    let by_downs = match (local.down, rival.down) {
+                    let by_downs = match (we_lost, they_lost) {
                         (true, true) => Some(Outcome::Draw),
                         (true, false) => Some(Outcome::Lost),
                         (false, true) => Some(Outcome::Won),
@@ -479,11 +643,8 @@ impl Rounds {
                     stage = 1;
                     out.push(Do::FadeOut);
                 }
-                if stage <= 1
-                    && lost
-                    && (revive_after_ms()..RESET_AFTER_MS).contains(&t)
-                    && local.downed
-                {
+                // A downed LOCAL gets up whoever won (ARENA-5: a teammate of the winners may be the one downed).
+                if stage <= 1 && (revive_after_ms()..RESET_AFTER_MS).contains(&t) && local.downed {
                     out.push(Do::Revive);
                 }
                 if stage == 1 && t >= RESET_AFTER_MS {
@@ -492,7 +653,8 @@ impl Rounds {
                 }
                 let rival_wait =
                     !self.decided() && timer.rival_missing && t < FADE_IN_MS + RIVAL_WAIT_MS;
-                if stage == 2 && t >= FADE_IN_MS && !rival_wait {
+                let place_wait = timer.unplaced && t < FADE_IN_MS + PLACE_WAIT_MS;
+                if stage == 2 && t >= FADE_IN_MS && !rival_wait && !place_wait {
                     if self.decided() {
                         self.phase = Phase::MatchOver;
                         out.push(Do::FadeInFrozen);
@@ -506,6 +668,7 @@ impl Rounds {
                         self.fight_since_ms = now_ms;
                         self.warned = false;
                         self.overtime_said = false;
+                        self.spectating = false;
                         out.push(Do::FadeIn);
                         out.push(Do::Message(format!(
                             "Round {}: fight!",
@@ -571,16 +734,18 @@ static ULT: Mutex<UltOnce> = Mutex::new(UltOnce {
 /// ARENA-4: the types shared with the bots feature (defined there: that feature is in both builds, this module is dev only).
 use crate::features::bots::fill::{ArenaBot, BotEvents};
 
-static ARENA_BOT: Mutex<Option<ArenaBot>> = Mutex::new(None);
+/// ARENA-4 / ARENA-6: the bots of the match and whether every place has its bot on its spawn.
+static ARENA_BOTS: Mutex<(Vec<ArenaBot>, bool)> = Mutex::new((Vec::new(), false));
 static BOT_EVENTS: Mutex<BotEvents> = Mutex::new(BotEvents {
     round_ends: 0,
     resets: 0,
     decided: 0,
 });
 
-/// ARENA-4 (bots feature, every tick): the bot the Arena fights, `None` = none (yet).
-pub(crate) fn set_arena_bot(b: Option<ArenaBot>) {
-    *lock(&ARENA_BOT) = b;
+/// ARENA-4 / ARENA-6 (bots feature, every tick): the bots the Arena match has (allies and enemies), and whether all stand on their
+/// spawns since the last round end.
+pub(crate) fn set_arena_bots(bots: Vec<ArenaBot>, all_ready: bool) {
+    *lock(&ARENA_BOTS) = (bots, all_ready);
 }
 
 /// ARENA-4 (bots feature): the round events so far.
@@ -596,6 +761,95 @@ pub(crate) fn score() -> Option<(u8, u8)> {
         .as_ref()
         .filter(|(r, _)| r.phase != Phase::Off)
         .map(|(r, _)| (r.won, r.lost))
+}
+
+/// ARENA-5: session ids of the other players seen beaten in the current round (main loop only; cleared outside an armed round).
+static BEATEN_IDS: Mutex<Vec<u64>> = Mutex::new(Vec::new());
+/// ARENA-5: a bench move is waiting (since when; main loop only).
+static BENCH_SINCE: Mutex<Option<Instant>> = Mutex::new(None);
+/// ARENA-6: whom LOCAL watches (main loop only).
+#[derive(Clone, Copy, Debug, Default)]
+struct Watch {
+    /// When the bench move was written (the stages count from it).
+    parked_at: Option<Instant>,
+    /// The watched teammate (session id, or a bot ally's handle).
+    target: Option<u64>,
+    /// Nobody to follow: sent to the bench.
+    benched: bool,
+    /// A follow move failed (logged once per target).
+    failed: bool,
+    /// The bench move was written (the hide waits for it: a body hidden anywhere else stays there in the others' view).
+    bench_ok: bool,
+}
+static WATCH: Mutex<Watch> = Mutex::new(Watch {
+    parked_at: None,
+    target: None,
+    benched: false,
+    failed: false,
+    bench_ok: false,
+});
+/// ARENA-6: the values last written to [`FLAG_GHOST`] / [`FLAG_HIDE`] (`None` = never), and whether a failed write was logged.
+static GHOST: Mutex<Option<bool>> = Mutex::new(None);
+static HIDE: Mutex<Option<bool>> = Mutex::new(None);
+static GHOST_WARNED: AtomicBool = AtomicBool::new(false);
+static HIDE_WARNED: AtomicBool = AtomicBool::new(false);
+
+/// ARENA-6: write one of our saved switch flags when [`saved_flag_write_due`] (the first tick of a session too, so a game closed while
+/// spectating never leaves the player a hidden ghost); a failed write (title screen, load) is logged once and tried again next tick.
+fn write_switch(
+    base: usize,
+    flag: u32,
+    want: bool,
+    last: &Mutex<Option<bool>>,
+    warned: &AtomicBool,
+    what: &str,
+) {
+    let mut l = lock(last);
+    if !saved_flag_write_due(*l, want) {
+        return;
+    }
+    match crate::game::flags::set(base, flag, want) {
+        Ok(_) => {
+            tracing::info!("arena_rounds: {what} {}", if want { "on" } else { "off" });
+            *l = Some(want);
+            warned.store(false, Ordering::Relaxed);
+        }
+        Err(e) => {
+            if !warned.swap(true, Ordering::Relaxed) {
+                tracing::warn!("arena_rounds: flag {flag} ({what}) not set yet: {e}");
+            }
+        }
+    }
+}
+/// ARENA-5: `(teammates, rivals)` last logged.
+static SIDES: Mutex<(usize, usize)> = Mutex::new((usize::MAX, usize::MAX));
+
+/// ARENA-5 / ARENA-6: another player or a bot of the match as this tick sees it.
+#[derive(Clone, Copy, Debug)]
+struct Member {
+    /// Session id (a player) or handle (a bot).
+    id: u64,
+    seen: Seen,
+    /// World position (`None` = not read).
+    pos: Option<[f32; 3]>,
+    /// HP as a fraction of its maximum (a bot: of its spawn HP), for the time limit.
+    frac: Option<f32>,
+}
+
+/// ARENA-5 (pure): a player once beaten in the round stays beaten (`ids` holds who was); others as seen.
+pub(crate) fn sticky(ids: &mut Vec<u64>, id: u64, s: Seen) -> Seen {
+    if s.down && !ids.contains(&id) {
+        ids.push(id);
+    }
+    if ids.contains(&id) {
+        Seen {
+            down: true,
+            up: false,
+            ..s
+        }
+    } else {
+        s
+    }
 }
 
 /// The host's verdicts received this match: `(bout key, LOCAL's outcome)`.
@@ -719,23 +973,85 @@ pub(crate) fn tick(base: usize, world: &World) {
     let mut st = lock(&STATE);
     let (rounds, start) = st.get_or_insert_with(|| (Rounds::default(), Instant::now()));
     let now_ms = start.elapsed().as_millis() as u64;
-    let mut local = None;
-    let mut rival = None;
-    let mut rival_addr = None;
     let vs_bot = crate::mm::arena_bots();
-    let mut local_raw = None;
-    for f in world.fighters.iter().flatten() {
-        if f.local {
-            local_raw = Some((f.state, f.hp));
-            local = Some((f.addr, Seen::of(f.state, f.hp)));
-        } else if rival.is_none() && !vs_bot {
-            rival = Some(Seen::of(f.state, f.hp));
-            rival_addr = Some(f.addr);
-        }
-    }
-    let Some((local_addr, mut local_seen)) = local else {
+    // ARENA-6: the spectator's switches, before anything else (also at the Roundtable: they are saved with the character). The hide
+    // waits for the stage the last tick reached (the body on the bench, seen there by the others).
+    let watching = on && spectating_now(rounds);
+    let hide = HIDE_BODY.load(Ordering::Relaxed);
+    let stage = watch_stage(
+        lock(&WATCH)
+            .parked_at
+            .map(|t| t.elapsed().as_millis() as u64),
+        hide,
+    );
+    write_switch(
+        base,
+        FLAG_GHOST,
+        watching,
+        &GHOST,
+        &GHOST_WARNED,
+        "spectator ghost (no collision, no gravity)",
+    );
+    write_switch(
+        base,
+        FLAG_HIDE,
+        watching && hide && matches!(stage, WatchStage::Hidden | WatchStage::Following),
+        &HIDE,
+        &HIDE_WARNED,
+        "spectator body hidden",
+    );
+    let Some(me) = world.fighters.iter().flatten().find(|f| f.local).copied() else {
         return;
     };
+    let (local_addr, mut local_seen, local_raw) =
+        (me.addr, Seen::of(me.state, me.hp), Some((me.state, me.hp)));
+    // ARENA-5: the other players split by team (`team_key`, equal for teammates on every game); against a bot there are none. A player
+    // beaten in this round stays beaten until it ends (a heal on the bench never brings a player back), on every game alike.
+    let mut beaten = lock(&BEATEN_IDS);
+    if rounds.phase != (Phase::Fighting { armed: true }) {
+        beaten.clear();
+    }
+    let mut mates: Vec<Member> = Vec::new();
+    let mut rivals: Vec<Member> = Vec::new();
+    for (i, f) in world.fighters.iter().enumerate() {
+        let Some(f) = f.filter(|f| !f.local && !vs_bot) else {
+            continue;
+        };
+        let m = Member {
+            id: f.id,
+            seen: sticky(&mut beaten, f.id, Seen::of(f.state, f.hp)),
+            pos: world.positions.get(i).copied().flatten(),
+            frac: hp_fraction(f.addr),
+        };
+        if f.team == me.team {
+            mates.push(m);
+        } else {
+            rivals.push(m);
+        }
+    }
+    // ARENA-4 / ARENA-6: against bots the bot allies are the teammates and the enemy bots the rivals (out at 0 HP; HP in percent of
+    // the HP each had at its spawn).
+    let (arena_bots, bots_ready) = if vs_bot {
+        lock(&ARENA_BOTS).clone()
+    } else {
+        (Vec::new(), false)
+    };
+    for b in &arena_bots {
+        let chr = world.bot(b.handle);
+        let hp = chr.filter(|_| !b.out).map_or(0, |c| c.hp);
+        let m = Member {
+            id: b.handle,
+            seen: sticky(&mut beaten, b.handle, Seen::of(0, hp)),
+            pos: chr.and_then(|c| c.pos),
+            frac: (b.full_hp > 0).then(|| (hp as f32 / b.full_hp as f32).min(1.0)),
+        };
+        if b.ally {
+            mates.push(m);
+        } else {
+            rivals.push(m);
+        }
+    }
+    drop(beaten);
     if !on {
         BAR_GETUP.store(false, Ordering::Relaxed);
         *lock(&SKIP_GUARD) = None;
@@ -757,46 +1073,60 @@ pub(crate) fn tick(base: usize, world: &World) {
             }
         }
     }
-    // ARENA-4: the bot is the rival (down at 0 HP; its HP in percent of its spawn HP for the time limit).
-    let arena_bot = if vs_bot { *lock(&ARENA_BOT) } else { None };
-    let bot_hp = arena_bot.and_then(|b| world.bot(b.handle).map(|c| (b, c.hp)));
-    if vs_bot {
-        rival = bot_hp.map(|(_, hp)| Seen::of(0, hp));
-    }
-    // ARENA-3: the host's verdicts on timed-out bouts (key = bout number).
+    // ARENA-3: the host's verdicts on timed-out bouts (key = bout number). ARENA-5: the value names the host's team.
+    let my_team = crate::mm::local_roster_team();
     let mut verdicts = lock(&VERDICTS);
     if !on {
         verdicts.clear();
     }
     for r in crate::net::bus::take(crate::net::bus::topic::ARENA_ROUND) {
-        if let Some(o) = Outcome::from_host_wire(r.fact.value) {
+        if let Some(o) = Outcome::from_host_wire(r.fact.value, my_team) {
             tracing::info!(
-                "arena_rounds: the host's verdict for bout {}: {o:?} for us",
-                r.fact.key
+                "arena_rounds: the host's verdict for bout {} (0x{:X}): {o:?} for us (team {my_team:?})",
+                r.fact.key,
+                r.fact.value
             );
             verdicts.push((r.fact.key, o));
         }
     }
     let next_bout = u32::from(rounds.bouts) + 1;
-    let rival_hp = if vs_bot {
-        bot_hp
-            .filter(|(b, _)| b.full_hp > 0)
-            .map(|(b, hp)| (hp as f32 / b.full_hp as f32).min(1.0))
-    } else {
-        rival_addr.and_then(hp_fraction)
-    };
+    // The time-limit HP: each side's mean HP fraction (ARENA-5; 1v1: the one player's; bots in percent of their spawn HP).
+    let theirs: Vec<f32> = rivals.iter().filter_map(|m| m.frac).collect();
+    let rival_hp = side_hp(&theirs);
+    let mine: Vec<f32> = std::iter::once(hp_fraction(local_addr))
+        .chain(mates.iter().map(|m| m.frac))
+        .flatten()
+        .collect();
     let timer = Timer {
         host: vs_bot || super::defeatdrop::is_host(base),
-        hp: hp_fraction(local_addr).zip(rival_hp),
+        hp: side_hp(&mine).zip(rival_hp),
         verdict: verdicts.iter().find(|v| v.0 == next_bout).map(|v| v.1),
         limit_ms: LIMIT_OVERRIDE_MS.load(std::sync::atomic::Ordering::Relaxed),
-        rival_missing: vs_bot && !bot_hp.is_some_and(|(b, hp)| b.ready && hp > 0),
+        rival_missing: vs_bot && !bots_ready,
+        unplaced: lock(&PLACE_SINCE).is_some(),
     };
     drop(verdicts);
     let before = rounds.phase;
-    let dos = rounds.step_timed(now_ms, on, local_seen, rival, timer);
+    let mate_seen: Vec<Seen> = mates.iter().map(|m| m.seen).collect();
+    let rival_seen: Vec<Seen> = rivals.iter().map(|r| r.seen).collect();
+    let dos = rounds.step_teams(now_ms, on, local_seen, &mate_seen, &rival_seen, timer);
     if !on {
         *lock(&PLACE_SINCE) = None;
+        *lock(&BENCH_SINCE) = None;
+    }
+    if on {
+        let mut sides = lock(&SIDES);
+        if *sides != (mates.len(), rivals.len()) {
+            *sides = (mates.len(), rivals.len());
+            tracing::info!(
+                "arena_rounds: sides: LOCAL + {} teammate(s) vs {} rival(s) (roster team {my_team:?}, slot {:?})",
+                mates.len(),
+                rivals.len(),
+                crate::mm::local_roster_slot()
+            );
+        }
+    } else {
+        *lock(&SIDES) = (usize::MAX, usize::MAX);
     }
     if std::mem::discriminant(&rounds.phase) != std::mem::discriminant(&before) {
         if matches!(rounds.phase, Phase::RoundOver { .. }) {
@@ -812,7 +1142,7 @@ pub(crate) fn tick(base: usize, world: &World) {
     if before == (Phase::Fighting { armed: false })
         && rounds.phase == (Phase::Fighting { armed: true })
     {
-        tracing::info!("arena_rounds: both up: a down counts from now");
+        tracing::info!("arena_rounds: everyone up: a down counts from now");
         // Both games are surely in the arena now: our equipment once more, so the rival draws our real weapons.
         if !vs_bot {
             super::arenaloadout::resend(base);
@@ -849,9 +1179,16 @@ pub(crate) fn tick(base: usize, world: &World) {
         }
     }
     drop(imm);
-    // ARENA-OT: overtime drains this game's player and, in a bot match, the bot.
-    let bot_chr = arena_bot.and_then(|b| world.bot(b.handle)).map(|c| c.chr);
-    let chrs: Vec<usize> = std::iter::once(local_addr).chain(bot_chr).collect();
+    // ARENA-OT: overtime drains this game's player and, in a bot match, the bots.
+    let chrs: Vec<usize> = std::iter::once(local_addr)
+        .chain(
+            arena_bots
+                .iter()
+                .filter(|b| !b.out)
+                .filter_map(|b| world.bot(b.handle))
+                .map(|c| c.chr),
+        )
+        .collect();
     super::arenaclock::drain(dos.contains(&Do::Drain), &chrs);
     for d in dos {
         match d {
@@ -863,6 +1200,16 @@ pub(crate) fn tick(base: usize, world: &World) {
             Do::FadeOut => set_flag(base, FLAG_FADE_OUT),
             Do::FadeIn => set_flag(base, FLAG_FADE_IN),
             Do::FadeInFrozen => set_flag(base, FLAG_FADE_IN_FROZEN),
+            Do::Spectate => {
+                // Frozen with the screen on (the match-end fade, from a visible screen: it stays visible), to the far bench first; the
+                // watch below hides it there and then moves it.
+                set_flag(base, FLAG_FADE_IN_FROZEN);
+                *lock(&WATCH) = Watch::default();
+                *lock(&BENCH_SINCE) = Some(Instant::now());
+                tracing::info!(
+                    "arena_rounds: LOCAL beaten, a teammate fights on: frozen, watching the team"
+                );
+            }
             Do::Revive => {
                 // Every tick while LOCAL is downed in the window (repeats are harmless: `+0x732` is never touched).
                 BAR_GETUP.store(true, Ordering::Relaxed);
@@ -897,6 +1244,7 @@ pub(crate) fn tick(base: usize, world: &World) {
                 BAR_GETUP.store(false, Ordering::Relaxed);
                 set_flag(base, FLAG_HEAL);
                 set_flag(base, FLAG_REFILL_ESTUS);
+                *lock(&BENCH_SINCE) = None;
                 *lock(&PLACE_SINCE) = Some(Instant::now());
                 tracing::info!("arena_rounds: reset: recovery, estus, back to the spawn");
                 // ARENA-LV: a level lost in the round (2026-11-11: level 14 after a revive by the rival) never carries over.
@@ -912,10 +1260,10 @@ pub(crate) fn tick(base: usize, world: &World) {
                 let sent = crate::net::bus::publish(
                     crate::net::bus::topic::ARENA_ROUND,
                     u32::from(key),
-                    o.wire(),
+                    o.wire(my_team),
                 );
                 tracing::info!(
-                    "arena_rounds: bout {key} timed out: {o:?} for the host (published {sent})"
+                    "arena_rounds: bout {key} timed out: {o:?} for the host, team {my_team:?} (published {sent})"
                 );
             }
             Do::Win | Do::Lose => {
@@ -968,6 +1316,69 @@ pub(crate) fn tick(base: usize, world: &World) {
         let force = t.elapsed().as_millis() as u64 >= PLACE_FORCE_AFTER_MS;
         if super::arenacard::place(base, force) || force {
             *pending = None;
+        }
+    }
+    drop(pending);
+    // ARENA-6: watching: on the bench (seen there), hidden there, then the body follows a living teammate every tick (the camera goes
+    // with it; the others still see it on the bench); nobody left to follow = back to the bench.
+    let mut w = lock(&WATCH);
+    if watching && w.parked_at.is_none() && w.bench_ok {
+        w.parked_at = Some(Instant::now());
+        tracing::info!(
+            "arena_rounds: on the bench; hidden in {HIDE_AFTER_MS} ms, then following a teammate"
+        );
+    }
+    if watching && stage == WatchStage::Following {
+        // A living teammate; once none is left (the round is over) the one watched last, so the camera stays on the team through the
+        // fade-out (the last teammate beaten is not hidden: its position is live).
+        let up: Vec<(u64, [f32; 3])> = mates
+            .iter()
+            .filter(|m| !m.seen.down)
+            .filter_map(|m| m.pos.map(|p| (m.id, p)))
+            .collect();
+        let cands: Vec<(u64, [f32; 3])> = if up.is_empty() {
+            mates
+                .iter()
+                .filter(|m| Some(m.id) == w.target)
+                .filter_map(|m| m.pos.map(|p| (m.id, p)))
+                .collect()
+        } else {
+            up
+        };
+        match pick_watch(w.target, &cands, world.spec_next, world.spec_prev) {
+            Some((id, p)) => {
+                if w.target != Some(id) {
+                    tracing::info!("arena_rounds: watching teammate {id:#X}");
+                    w.failed = false;
+                }
+                w.target = Some(id);
+                w.benched = false;
+                if let Err(e) = super::spawn::teleport(local_addr, base, p) {
+                    if !std::mem::replace(&mut w.failed, true) {
+                        tracing::warn!("arena_rounds: follow move to {id:#X} failed: {e}");
+                    }
+                }
+            }
+            None if !w.benched => {
+                w.target = None;
+                w.benched = true;
+                *lock(&BENCH_SINCE) = Some(Instant::now());
+                tracing::info!("arena_rounds: no teammate to watch: to the bench");
+            }
+            None => {}
+        }
+    } else if !watching {
+        *w = Watch::default();
+    }
+    drop(w);
+    // ARENA-5: the bench move, retried like the reset move (the player may be mid-attack when beaten).
+    let mut bench = lock(&BENCH_SINCE);
+    if let Some(t) = *bench {
+        let force = t.elapsed().as_millis() as u64 >= PLACE_FORCE_AFTER_MS;
+        // ARENA-6: retried (forced after a second) until it is written; only then may the body be hidden.
+        if super::arenacard::bench(base, force) {
+            *bench = None;
+            lock(&WATCH).bench_ok = true;
         }
     }
 }
@@ -1245,6 +1656,7 @@ mod tests {
             verdict,
             limit_ms: 0,
             rival_missing: false,
+            unplaced: false,
         }
     }
 
@@ -1303,6 +1715,45 @@ mod tests {
             rival_missing: m,
             ..Timer::default()
         }
+    }
+
+    #[test]
+    fn the_next_round_waits_until_local_is_back_on_its_spawn() {
+        let mut r = Rounds::default();
+        start(&mut r);
+        let f = r.fight_since_ms;
+        r.step(f + 100, true, DOWN, Some(UP));
+        let at = f + 100;
+        let unplaced = Timer {
+            unplaced: true,
+            ..Timer::default()
+        };
+        // The reset happens; the move is refused (mid-attack): the screen stays black past FADE_IN_MS.
+        for t in [FADE_OUT_MS, RESET_AFTER_MS] {
+            r.step_timed(at + t, true, UP, Some(UP), unplaced);
+        }
+        assert!(r
+            .step_timed(at + FADE_IN_MS + 200, true, UP, Some(UP), unplaced)
+            .is_empty());
+        // The forced move is written: the round starts.
+        let out = r.step_timed(at + FADE_IN_MS + 300, true, UP, Some(UP), Timer::default());
+        assert_eq!(out[0], Do::FadeIn);
+        // A move that never lands does not hold the match forever.
+        let mut r2 = Rounds::default();
+        start(&mut r2);
+        let f = r2.fight_since_ms;
+        r2.step(f + 100, true, DOWN, Some(UP));
+        for t in [FADE_OUT_MS, RESET_AFTER_MS] {
+            r2.step_timed(f + 100 + t, true, UP, Some(UP), unplaced);
+        }
+        let out = r2.step_timed(
+            f + 100 + FADE_IN_MS + PLACE_WAIT_MS,
+            true,
+            UP,
+            Some(UP),
+            unplaced,
+        );
+        assert_eq!(out[0], Do::FadeIn);
     }
 
     #[test]
@@ -1540,9 +1991,292 @@ mod tests {
         assert_eq!(out[0], Do::Verdict(1, Outcome::Draw));
         assert_eq!(judge(None), Outcome::Draw);
         assert_eq!(
-            Outcome::from_host_wire(Outcome::Won.wire()),
+            Outcome::from_host_wire(Outcome::Won.wire(None), None),
             Some(Outcome::Lost)
         );
+    }
+
+    #[test]
+    fn the_hosts_verdict_holds_for_its_teammates_and_flips_for_its_rivals() {
+        let from = |o: Outcome, host: Option<u8>, me: Option<u8>| {
+            Outcome::from_host_wire(o.wire(host), me).unwrap()
+        };
+        assert_eq!(
+            from(Outcome::Won, Some(0), Some(0)),
+            Outcome::Won,
+            "teammate"
+        );
+        assert_eq!(from(Outcome::Won, Some(0), Some(1)), Outcome::Lost, "rival");
+        assert_eq!(from(Outcome::Lost, Some(1), Some(0)), Outcome::Won);
+        assert_eq!(from(Outcome::Draw, Some(1), Some(0)), Outcome::Draw);
+        assert_eq!(from(Outcome::Draw, Some(1), Some(1)), Outcome::Draw);
+        // Either team unknown: the 1v1 rule (the other game is the rival).
+        assert_eq!(from(Outcome::Won, None, Some(0)), Outcome::Lost);
+        assert_eq!(from(Outcome::Won, Some(0), None), Outcome::Lost);
+        assert_eq!(Outcome::Won.wire(None), 1, "1v1 values unchanged");
+        assert_eq!(Outcome::from_host_wire(0x105, Some(0)), None, "bad outcome");
+    }
+
+    /// ARENA-5: start a 2v2 round (LOCAL + one teammate vs two rivals); returns the next free time.
+    fn start2(r: &mut Rounds) -> u64 {
+        for t in [0, 1_000, 1_050] {
+            r.step_teams(t, true, UP, &[UP], &[UP, UP], Timer::default());
+        }
+        assert_eq!(r.phase, Phase::Fighting { armed: true });
+        2_000
+    }
+
+    #[test]
+    fn a_team_round_waits_for_every_player_up_before_it_counts() {
+        let mut r = Rounds::default();
+        for t in [0, 1_000, 1_050] {
+            r.step_teams(t, true, UP, &[Seen::default()], &[UP, UP], Timer::default());
+        }
+        assert_eq!(
+            r.phase,
+            Phase::Fighting { armed: false },
+            "a teammate not up"
+        );
+        r.step_teams(1_100, true, UP, &[UP], &[UP, BEATEN], Timer::default());
+        assert_eq!(r.phase, Phase::Fighting { armed: false }, "a rival not up");
+        r.step_teams(1_150, true, UP, &[UP], &[UP, UP], Timer::default());
+        assert_eq!(r.phase, Phase::Fighting { armed: true });
+    }
+
+    #[test]
+    fn one_beaten_player_watches_the_team_and_the_round_goes_on() {
+        let mut r = Rounds::default();
+        let t = start2(&mut r);
+        let out = r.step_teams(t, true, BEATEN, &[UP], &[UP, UP], Timer::default());
+        assert_eq!(out[0], Do::Spectate);
+        assert!(r.spectating);
+        assert_eq!(
+            r.phase,
+            Phase::Fighting { armed: true },
+            "the round goes on"
+        );
+        assert!(
+            r.step_teams(t + 100, true, BEATEN, &[UP], &[UP, UP], Timer::default())
+                .is_empty(),
+            "spectates once"
+        );
+        // A heal on the bench does not bring LOCAL back.
+        assert!(r
+            .step_teams(t + 200, true, UP, &[UP], &[UP, BEATEN], Timer::default())
+            .is_empty());
+        // The teammate falls too: the round is lost.
+        let out = r.step_teams(
+            t + 300,
+            true,
+            UP,
+            &[BEATEN],
+            &[UP, BEATEN],
+            Timer::default(),
+        );
+        assert_eq!(out, vec![Do::Message("Round 1: you lost (0-1)".into())]);
+        // The next round starts with nobody on the bench.
+        for ms in [1_000, 5_000] {
+            r.step_teams(t + 300 + ms, true, UP, &[UP], &[UP, UP], Timer::default());
+        }
+        let out = r.step_teams(t + 6_300, true, UP, &[UP], &[UP, UP], Timer::default());
+        assert_eq!(out[0], Do::FadeIn);
+        assert!(!r.spectating);
+    }
+
+    #[test]
+    fn watching_lasts_from_the_beating_to_the_reset() {
+        let mut r = Rounds::default();
+        let t = start2(&mut r);
+        assert!(!spectating_now(&r));
+        r.step_teams(t, true, BEATEN, &[UP], &[UP, UP], Timer::default());
+        assert!(spectating_now(&r));
+        // The teammate falls: the round is over, LOCAL still watches through the fade-out...
+        r.step_teams(
+            t + 100,
+            true,
+            BEATEN,
+            &[BEATEN],
+            &[UP, UP],
+            Timer::default(),
+        );
+        assert!(matches!(r.phase, Phase::RoundOver { .. }));
+        assert!(spectating_now(&r));
+        r.step_teams(
+            t + 1_200,
+            true,
+            BEATEN,
+            &[BEATEN],
+            &[UP, UP],
+            Timer::default(),
+        );
+        assert!(spectating_now(&r), "faded out, not reset yet");
+        // ...and stops at the reset (back on its spawn, on the floor).
+        let out = r.step_teams(t + 5_200, true, UP, &[UP], &[UP, UP], Timer::default());
+        assert!(out.contains(&Do::Reset));
+        assert!(!spectating_now(&r));
+        // The match ending never watches.
+        r.phase = Phase::MatchOver;
+        r.spectating = true;
+        assert!(!spectating_now(&r));
+    }
+
+    #[test]
+    fn the_body_is_hidden_only_on_the_bench_and_follows_only_once_hidden() {
+        assert_eq!(watch_stage(None, true), WatchStage::Parking);
+        assert_eq!(watch_stage(Some(0), true), WatchStage::Parked);
+        assert_eq!(
+            watch_stage(Some(HIDE_AFTER_MS - 1), true),
+            WatchStage::Parked
+        );
+        assert_eq!(watch_stage(Some(HIDE_AFTER_MS), true), WatchStage::Hidden);
+        assert_eq!(
+            watch_stage(Some(HIDE_AFTER_MS + FOLLOW_AFTER_MS - 1), true),
+            WatchStage::Hidden
+        );
+        assert_eq!(
+            watch_stage(Some(HIDE_AFTER_MS + FOLLOW_AFTER_MS), true),
+            WatchStage::Following
+        );
+        assert_eq!(watch_stage(None, false), WatchStage::Parking);
+        assert_eq!(
+            watch_stage(Some(0), false),
+            WatchStage::Following,
+            "arena_hide 0"
+        );
+    }
+
+    #[test]
+    fn the_watched_teammate_stays_until_switched_and_wraps() {
+        let a = (0x6002_FFFF_FFFF, [1.0, 0.0, 0.0]);
+        let b = (0x6003_FFFF_FFFF, [2.0, 0.0, 0.0]);
+        let c = (0x6005_FFFF_FFFF, [3.0, 0.0, 0.0]);
+        assert_eq!(pick_watch(None, &[], false, false), None);
+        assert_eq!(pick_watch(Some(a.0), &[], true, false), None, "nobody left");
+        assert_eq!(
+            pick_watch(None, &[c, a, b], false, false),
+            Some(a),
+            "lowest id"
+        );
+        assert_eq!(
+            pick_watch(Some(b.0), &[c, a, b], false, false),
+            Some(b),
+            "stays"
+        );
+        assert_eq!(pick_watch(Some(b.0), &[c, a, b], true, false), Some(c));
+        assert_eq!(
+            pick_watch(Some(c.0), &[c, a, b], true, false),
+            Some(a),
+            "wraps"
+        );
+        assert_eq!(
+            pick_watch(Some(a.0), &[c, a, b], false, true),
+            Some(c),
+            "back wraps"
+        );
+        // The watched one falls: the next candidate (lowest id).
+        assert_eq!(pick_watch(Some(b.0), &[c, a], false, false), Some(a));
+        // Positions move with the candidate.
+        let b2 = (b.0, [9.0, 1.0, 9.0]);
+        assert_eq!(pick_watch(Some(b.0), &[a, b2], false, false), Some(b2));
+    }
+
+    #[test]
+    fn a_team_round_is_won_only_when_every_rival_is_beaten() {
+        let mut r = Rounds::default();
+        let t = start2(&mut r);
+        assert!(r
+            .step_teams(t, true, UP, &[UP], &[BEATEN, UP], Timer::default())
+            .is_empty());
+        let out = r.step_teams(
+            t + 100,
+            true,
+            UP,
+            &[BEATEN],
+            &[BEATEN, BEATEN],
+            Timer::default(),
+        );
+        assert_eq!(out, vec![Do::Message("Round 1: you won (1-0)".into())]);
+        assert!(!r.spectating, "LOCAL standing never spectates");
+    }
+
+    #[test]
+    fn a_leaver_leaves_a_team_that_plays_on_short_handed() {
+        let mut r = Rounds::default();
+        let t = start2(&mut r);
+        // A rival left (one rival seen): beating the one left wins.
+        let out = r.step_teams(t, true, UP, &[UP], &[BEATEN], Timer::default());
+        assert_eq!(out, vec![Do::Message("Round 1: you won (1-0)".into())]);
+        // The whole other team gone: no round is won by that.
+        let mut r = Rounds::default();
+        let t = start2(&mut r);
+        assert!(r
+            .step_teams(t, true, UP, &[UP], &[], Timer::default())
+            .is_empty());
+        // LOCAL's teammate left: LOCAL beaten alone loses (no bench).
+        let out = r.step_teams(t + 100, true, BEATEN, &[], &[UP], Timer::default());
+        assert_eq!(out, vec![Do::Message("Round 1: you lost (0-1)".into())]);
+    }
+
+    #[test]
+    fn a_downed_winner_still_gets_up_after_a_team_round() {
+        let mut r = Rounds::default();
+        let t = start2(&mut r);
+        r.step_teams(t, true, DOWN, &[UP], &[UP, UP], Timer::default());
+        let out = r.step_teams(
+            t + 100,
+            true,
+            DOWN,
+            &[UP],
+            &[BEATEN, BEATEN],
+            Timer::default(),
+        );
+        assert_eq!(out, vec![Do::Message("Round 1: you won (1-0)".into())]);
+        r.step_teams(t + 1_100, true, DOWN, &[UP], &[UP, UP], Timer::default());
+        let out = r.step_teams(t + 2_100, true, DOWN, &[UP], &[UP, UP], Timer::default());
+        assert_eq!(out, vec![Do::Revive]);
+    }
+
+    #[test]
+    fn overtime_in_teams_ends_when_a_whole_team_is_beaten() {
+        let mut r = Rounds::default();
+        let t = start2(&mut r);
+        let f = r.fight_since_ms;
+        let host = timed(true, Some((0.4, 0.6)), None);
+        let _ = t;
+        let out = r.step_teams(f + ROUND_LIMIT_MS, true, BEATEN, &[UP], &[UP, UP], host);
+        assert!(
+            out.contains(&Do::Spectate) && out.contains(&Do::Drain),
+            "{out:?}"
+        );
+        let out = r.step_teams(
+            f + ROUND_LIMIT_MS + 100,
+            true,
+            BEATEN,
+            &[UP],
+            &[BEATEN, BEATEN],
+            host,
+        );
+        assert_eq!(out[0], Do::Verdict(1, Outcome::Won));
+    }
+
+    #[test]
+    fn a_side_loses_only_when_it_has_players_and_all_are_beaten() {
+        assert!(!all_beaten(&[]));
+        assert!(!all_beaten(&[BEATEN, UP]));
+        assert!(all_beaten(&[BEATEN, DOWN]));
+        assert!(!all_up(&[]));
+        assert!(all_up(&[UP, UP]));
+        assert_eq!(side_hp(&[]), None);
+        assert_eq!(side_hp(&[0.5, 1.0]), Some(0.75));
+    }
+
+    #[test]
+    fn once_beaten_in_a_round_a_player_stays_beaten() {
+        let mut ids = Vec::new();
+        assert_eq!(sticky(&mut ids, 7, UP), UP);
+        assert_eq!(sticky(&mut ids, 7, BEATEN), BEATEN);
+        assert_eq!(sticky(&mut ids, 7, UP), BEATEN, "healed on the bench");
+        assert_eq!(sticky(&mut ids, 8, UP), UP, "another player");
     }
 
     #[test]

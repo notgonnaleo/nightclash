@@ -1,5 +1,5 @@
 {
-  "_comment": "ARENA-0 (TASKS ARENA-0, .claude/re/PROJECT_SCOPE.md \u00a7Arena): warps for the Arena mode. Applied to event/common.emevd.dcx by scripts/build-gamedata.ps1. warp = [area, block, region, index] of the target map, entity = a point in it (Warp Player 2003:93, as the Spirit Shelter's m12 event 12002099 uses to send the party to the Nightlord: 18 / 18002200 for the Night Aspect card). Per game: our flag 10007500 ON warps this game's player to Heolstor's arena (m18_00_00_00, 18002200), then the flag is cleared and the event waits again (dev console: flag 10007500 1). ARENA-1: 99100910..99100913 turn this game's camera (Set Camera Angle 2008:4, X 5, Y 0 / 90 / 180 / 270) when our flag 10007510..10007513 goes ON; the DLL picks one per spawn after the move (dev console: flag 1000751x 1). ARENA-2: 99100914 refills this game's flasks (Refill Estus 2004:87) when our flag 10007514 goes ON (between Arena rounds). ARENA-2 fades (Fade to Black 2004:77, this game's screen): 10007515 to black in 0.5 s and the player frozen; 10007516 back in 1 s, unfrozen; 10007517 back in 1 s, still frozen (the match is over); 10007518 black at once, frozen (the arrival in the arena). ARENA-4: 99100919 gives this game's player SpEffect 8970061 while our flag 10007519 is ON (cleared when it goes OFF): offline, a solo player at 0 HP in the arena dies at once (YOU DIED, mi-arena-bot 2026-11-10); with it 0 HP is a down as in a session (MEMORY_MAP 18). A down uses it up, so the DLL turns the flag OFF at each reset and ON at each round start of a match against a bot. ARENA-HP1: 99100920 makes this game's player immortal (Set Character Immortality 2004:12, re-applied every 0.5 s) while our flag 10007520 is ON, and mortal again when it goes OFF: real hits stop at 1 HP, so an Arena round ends at 1 HP with no down (the DLL holds the flag ON for the whole Arena match).",
+  "_comment": "ARENA-0 (TASKS ARENA-0, .claude/re/PROJECT_SCOPE.md §Arena): warps for the Arena mode. Applied to event/common.emevd.dcx by scripts/build-gamedata.ps1. warp = [area, block, region, index] of the target map, entity = a point in it (Warp Player 2003:93, as the Spirit Shelter's m12 event 12002099 uses to send the party to the Nightlord: 18 / 18002200 for the Night Aspect card). Per game: our flag 10007500 ON warps this game's player to Heolstor's arena (m18_00_00_00, 18002200), then the flag is cleared and the event waits again (dev console: flag 10007500 1). ARENA-1: 99100910..99100913 turn this game's camera (Set Camera Angle 2008:4, X 5, Y 0 / 90 / 180 / 270) when our flag 10007510..10007513 goes ON; the DLL picks one per spawn after the move (dev console: flag 1000751x 1). ARENA-2: 99100914 refills this game's flasks (Refill Estus 2004:87) when our flag 10007514 goes ON (between Arena rounds). ARENA-2 fades (Fade to Black 2004:77, this game's screen): 10007515 to black in 0.5 s and the player frozen; 10007516 back in 1 s, unfrozen; 10007517 back in 1 s, still frozen (the match is over); 10007518 black at once, frozen (the arrival in the arena). ARENA-4: 99100919 gives this game's player SpEffect 8970061 while our flag 10007519 is ON (cleared when it goes OFF): offline, a solo player at 0 HP in the arena dies at once (YOU DIED, mi-arena-bot 2026-11-10); with it 0 HP is a down as in a session (MEMORY_MAP 18). A down uses it up, so the DLL turns the flag OFF at each reset and ON at each round start of a match against a bot. ARENA-HP1: 99100920 makes this game's player immortal (Set Character Immortality 2004:12, re-applied every 0.5 s) while our flag 10007520 is ON, and mortal again when it goes OFF: real hits stop at 1 HP, so an Arena round ends at 1 HP with no down (the DLL holds the flag ON for the whole Arena match). ARENA-6: a player beaten while a teammate fights on spectates the teammate (the body follows it): 99100921 turns this game's player's collision (Change Character Collision State 2004:39) and gravity (Set Character Gravity 2004:10) off while our flag 10007521 is ON (re-applied every 0.5 s) and back on when it goes OFF; 99100922 disables the player (Change Character Enable State 2004:5) while 10007522 is ON, so the body is not seen [HYPOTHESIS: on every game; check with two instances], enabled again when it goes OFF.",
   "file": "event/common.emevd.dcx",
   "events": [
     {
@@ -95,6 +95,35 @@
       "id": 99100920,
       "flag": 10007520,
       "immortal": true,
+      "secs": 0.5
+    },
+    {
+      "id": 99100921,
+      "flag": 10007521,
+      "char_switch": [
+        [
+          2004,
+          39,
+          0
+        ],
+        [
+          2004,
+          10,
+          0
+        ]
+      ],
+      "secs": 0.5
+    },
+    {
+      "id": 99100922,
+      "flag": 10007522,
+      "char_switch": [
+        [
+          2004,
+          5,
+          0
+        ]
+      ],
       "secs": 0.5
     }
   ]

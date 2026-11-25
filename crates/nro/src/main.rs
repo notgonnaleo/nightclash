@@ -16,7 +16,7 @@ const HELP: &str = "nro - launch and drive an offline nightreign-pvp developer g
   nro shot [name]                        screenshot of the game window into the run folder
   nro log [n] [filter]                   tail of the run's nrpvp.log
   nro stop [--all]                       kill the session's game and me3 (--all: every emulated instance)
-  nro launch --emulated N                emulated-Steam instance N (1..3), Steam closed; any command takes --i N
+  nro launch --emulated N                emulated-Steam instance N (1..4), Steam closed; any command takes --i N
   nro run <scenario.toml> [--mod-dist DIR]  full scenario: stage, launch, steps, report.json
   nro scenarios [--tag X]                list scenarios/*.toml (tags: smoke rules hud mi slow lab)
   nro puppets <n>                        n AFK puppet players (1..5) in the running session (offline mode, in a world)

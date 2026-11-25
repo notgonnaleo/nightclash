@@ -136,26 +136,34 @@ pub(crate) fn set_arena_match(on: bool) {
     ARENA_MATCH.store(on, Ordering::Relaxed);
 }
 
-/// ARENA-4: the next (or current) expedition is an offline Arena match against one bot (Bots On + Arena card + Solo + Commence; set by
-/// the Commence handler, cleared by the bots feature when that expedition is over).
-static ARENA_BOTS: AtomicBool = AtomicBool::new(false);
+/// ARENA-4: the next (or current) expedition is an offline Arena match against bots (Bots On + Arena card + Commence; set by the
+/// Commence handler, cleared by the bots feature when that expedition is over). ARENA-6: the value is the team size (1 Solo: LOCAL vs
+/// one bot; 2 Duo: LOCAL + 1 bot ally vs 2 bots; 3 Trio: LOCAL + 2 bot allies vs 3 bots); 0 = none.
+static ARENA_BOTS: AtomicU8 = AtomicU8::new(0);
 
-/// ARENA-4: start (or forget) an Arena match against a bot.
-pub(crate) fn set_arena_bots(on: bool) {
-    if ARENA_BOTS.swap(on, Ordering::Relaxed) != on {
-        tracing::info!(
-            "arena: match against a bot {}",
-            if on {
-                "requested (Bots On, Arena card, Commence)"
-            } else {
-                "over"
-            }
-        );
+/// ARENA-4 / ARENA-6: start an Arena match against bots with this team size (1..=3), or forget it (0).
+pub(crate) fn set_arena_bots(size: u8) {
+    let size = size.min(3);
+    let was = ARENA_BOTS.swap(size, Ordering::Relaxed);
+    if was != size {
+        if size > 0 {
+            tracing::info!(
+                "arena: match against bots requested (Bots On, Arena card, Commence): {size} vs {size}, {} bot(s)",
+                2 * size - 1
+            );
+        } else {
+            tracing::info!("arena: match against bots over");
+        }
     }
 }
 
-/// ARENA-4: the current expedition is an Arena match against a bot (no queue, no session).
+/// ARENA-4: the current expedition is an Arena match against bots (no queue, no session).
 pub(crate) fn arena_bots() -> bool {
+    ARENA_BOTS.load(Ordering::Relaxed) > 0
+}
+
+/// ARENA-6: the team size of the current Arena match against bots (0 = none).
+pub(crate) fn arena_bots_size() -> u8 {
     ARENA_BOTS.load(Ordering::Relaxed)
 }
 
@@ -169,6 +177,18 @@ pub(crate) fn arena_match() -> bool {
 pub(crate) fn local_roster_team() -> Option<u8> {
     let pid = local_pid()?;
     roster_teams()?.get(&pid).copied()
+}
+
+/// Game loop (ARENA-5): LOCAL's place in its roster team (0-based, by session id; the same on every game), `None` until it is known.
+pub(crate) fn local_roster_slot() -> Option<u8> {
+    roster_slot(&roster_teams()?, local_pid()?)
+}
+
+/// ARENA-5 (pure): `pid`'s place among the players of its team in `map`, by session id.
+pub(crate) fn roster_slot(map: &std::collections::HashMap<u64, u8>, pid: u64) -> Option<u8> {
+    let team = *map.get(&pid)?;
+    let below = map.iter().filter(|(p, t)| **t == team && **p < pid).count();
+    u8::try_from(below).ok()
 }
 
 /// Worker: publish the queue phase.
@@ -564,6 +584,19 @@ mod tests {
             classify_world(1, Some(stale), stale),
             World::Present(Some(Phase::Roundtable))
         );
+    }
+
+    #[test]
+    fn a_players_slot_is_its_rank_by_session_id_inside_its_team() {
+        let map: std::collections::HashMap<u64, u8> = [(30, 1), (10, 0), (20, 1), (40, 0), (50, 1)]
+            .into_iter()
+            .collect();
+        assert_eq!(roster_slot(&map, 10), Some(0));
+        assert_eq!(roster_slot(&map, 40), Some(1));
+        assert_eq!(roster_slot(&map, 20), Some(0));
+        assert_eq!(roster_slot(&map, 30), Some(1));
+        assert_eq!(roster_slot(&map, 50), Some(2));
+        assert_eq!(roster_slot(&map, 99), None, "not in the roster");
     }
 
     #[test]

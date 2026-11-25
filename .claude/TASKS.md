@@ -524,6 +524,38 @@ build, or by eye); no `arena_level: slipped` line after a lost round and no mid-
 again with one Commence (no `session: role none -> other` without a `Commence pressed` before it), as host and as client, in both
 return orders.
 
+### ARENA-5 — Arena Duo (2v2) and Trio (3v3) (Leonardo 2026-11-24; rules DECISIONS "Arena Duo / Trio rules")
+Owner: OPUS | Status: **built (branch `arena-duo-trio`); 2v2 PASS on four instances (2026-11-24, testing-log: round 1 by hand with
+real hits, then the scenario's three rounds step by step)**; open: an unattended `mi-arena-duo` run, Trio, real Steam | Depends on: MM-FILL (packing, roster teams)
+Built: the Arena card queues Duo / Trio (`menuflow`, a short party is filled); `arenarounds` judges whole teams (`step_teams`: lost
+when LOCAL and every teammate are beaten, won when every rival is; a beaten player stays beaten for the round; a leaver is simply
+missing), a beaten player with a teammate still up is frozen on its team's bench (`Do::Bench`, `arenacard::bench`); the time limit
+compares each side's mean HP; the host's verdict carries its roster team (`Outcome::wire`); teammates spawn 4 m apart by roster slot
+(`mm::local_roster_slot`). `nro` takes 4 instances (instance 4's save made once by hand). Console `mm_queue_arena_duo/squad`.
+Acceptance: `scenarios/mi-arena-duo.toml` PASS (four instances: bench, team rounds both ways, 2-1, WIN / LOSE per team); the next
+Friend Session with 4+ players plays a 2v2 and, with 6, a 3v3 (TESTING §6). The bench seat is replaced by the team spectate (ARENA-6).
+
+### ARENA-6 — Arena: watch the team after a beating; Duo / Trio against bots (Leonardo 2026-11-24; DECISIONS of that date)
+Owner: OPUS | Status: **built on branch `arena-duo-trio`**; hidden-body lab done (2026-11-25, testing-log: the disable hides only on
+its own game and freezes the body's position for the others, so the body is hidden on the far bench before it follows); open: a 2v2
+on four instances PASS played by hand (2026-11-25, testing-log `2026-11-25-arena-duo-spectate`); open: a Duo match against bots, the
+switch inputs, Trio | Depends on: ARENA-5
+Built: `Do::Bench` became `Do::Spectate`: frozen, flags 10007521 (event 99100921: no collision, no gravity) and 10007522 (event
+99100922: Change Character Enable State Disabled) ON while watching (`spectating_now`: from the beating to the reset; saved flags,
+written on a session's first tick), the body teleported onto a living teammate (player or bot ally) every tick (`pick_watch`, mouse
+buttons / D-pad switch); nobody to follow = the bench. Console `arena_hide 0|1`. Bots: `Decision::PassArenaBots(size)` (the players
+byte set to one so the game runs its solo Commence), `mm::arena_bots_size`, the director keeps 2n-1 bots with places (`fill::Role`:
+enemies first, then allies), ally team 2 / enemy team 6, parks on opposite sides, replaces the dead at the reset; `arenarounds` takes
+bot allies as teammates and enemy bots as rivals.
+Acceptance:
+1. **2v2 on four instances** (`mi-arena-duo`): the beaten player's log has `on the bench; hidden in`, `spectator body hidden on`,
+   `watching teammate`; its screen shows its teammate, a switch changes it; the other three see it only on the far bench; it lands on
+   its spawn at the reset (`spectator ghost ... off`, `pos` on the floor). A body seen on the teammate by others = the real-death
+   fallback.
+2. **Duo against bots (one instance, offline):** Bots On, the Arena card, Duo, Commence: `kept bot ... Arena enemy slot 0/1, ally
+   slot 1`, the ally fights the enemies and never LOCAL, the two enemies do not fight each other, `hp_set 1` on LOCAL = watching the
+   ally, rounds and WIN / LOSE as in Solo. Then Trio.
+
 ### ARENA-ULT-DMG — Some ultimates deal no damage to a rival player (Leonardo, 2026-11-17)
 Owner: OPUS | Status: **open: which ultimates is UNKNOWN** (ask Leonardo) | Depends on: nothing
 Static check done (2026-11-17, regulation 1.03.3 + Smithbox 2.2.6 defs and row names, read-only exporter in the scratchpad): the
