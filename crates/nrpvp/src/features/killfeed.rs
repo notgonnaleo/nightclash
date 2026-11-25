@@ -181,6 +181,11 @@ impl Feed {
         self.this_tick.push((id, team));
     }
 
+    /// ARENA-KF: a bot seen alive again under an id that was out (a new bot on a cleared bot's handle) can get a line again.
+    pub(crate) fn back(&mut self, id: u16) {
+        self.out.remove(&id);
+    }
+
     /// Whether two participants were ever seen as teammates (one is the other included).
     fn mates_with(&self, a: u16, b: u16) -> bool {
         a == b || self.mates.contains(&(a.min(b), a.max(b)))
@@ -405,16 +410,31 @@ impl Feature for KillFeed {
                 }
             }
         }
-        // BOT-KF: every rival bot is a rival of its own, named "Bot N".
-        for b in w.rival_bots() {
+        // BOT-KF: every rival bot is a rival of its own, named "Bot N". ARENA-KF: an Arena Duo / Trio bot ally is named the same and
+        // shares LOCAL's team key (blue, LOCAL's team in the summary).
+        let my_key = w
+            .fighters
+            .iter()
+            .flatten()
+            .find(|f| f.local)
+            .map(|f| f.team);
+        let allies = crate::features::bots::arena_allies();
+        let bots = w
+            .rival_bots()
+            .map(|b| (b, None))
+            .chain(allies.iter().filter_map(|h| w.bot(*h)).map(|b| (b, my_key)));
+        for (b, key) in bots {
             let sid = crate::game::world::bot_session_id(b.handle);
-            self.feed.see(short_id(sid), sid, false);
-            self.feed.name(short_id(sid), &bot_name(b.handle));
-            self.seen.insert(short_id(sid), (now, true));
+            let id = short_id(sid);
+            self.feed.see(id, key.unwrap_or(sid), false);
+            self.feed.name(id, &bot_name(b.handle));
+            self.seen.insert(id, (now, true));
             if b.hp == 0 {
-                self.bot_dead.entry(short_id(sid)).or_insert(now);
+                self.bot_dead.entry(id).or_insert(now);
             } else {
-                self.bot_dead.remove(&short_id(sid));
+                self.bot_dead.remove(&id);
+                // ARENA-KF: the game hands a cleared bot's handle to a new bot (the Arena refill); the new one can die again.
+                self.feed.back(id);
             }
         }
         let events = local.into_iter().chain(
@@ -779,6 +799,27 @@ mod tests {
             .contains(&format!(
                 "<font color='{COLOR_RIVAL}'>x</font> killed <font color='{COLOR_RIVAL}'>x"
             )));
+    }
+
+    /// ARENA-KF: a new bot on a cleared bot's handle (the Arena refill) gets its own line; the same death reported twice does not.
+    #[test]
+    fn a_bot_back_on_a_reused_handle_can_get_a_line_again() {
+        let mut f = Feed::default();
+        for (id, team) in [(A, 1), (B, 1), (C, 2)] {
+            f.see(id, team, id == A);
+            f.name(id, "x");
+        }
+        assert!(f.line(ev(KillKind::Killed, C, Some(B))).is_some());
+        assert!(
+            f.line(ev(KillKind::Killed, C, Some(B))).is_none(),
+            "a report twice"
+        );
+        f.back(C);
+        let line = f.line(ev(KillKind::Killed, C, Some(A))).unwrap();
+        assert!(
+            line.contains(&format!("<font color='{COLOR_MINE}'>x</font> killed")),
+            "{line}"
+        );
     }
 
     #[test]

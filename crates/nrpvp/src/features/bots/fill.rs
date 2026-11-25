@@ -178,6 +178,12 @@ pub(crate) fn death_cause(attacker: u64, local: Option<u64>, rival_bots: &[u64])
     }
 }
 
+/// ARENA-KF (pure): whether a bot's death gets a killfeed line: always outside the Arena, and in an Arena Duo / Trio; not in an
+/// Arena Solo match, where the round message already says it.
+pub(crate) fn arena_kill_line(arena: bool, size: u8) -> bool {
+    !arena || size > 1
+}
+
 /// BOT-KF: the killfeed line of a bot's death (pure): killed by LOCAL or another bot, or consumed by the tide. A mob's kill has none
 /// (the bot is replaced, like a player's mob death).
 pub(crate) fn kill_event(
@@ -777,7 +783,16 @@ impl BotFill {
         let rival_team = self.rival_team;
         // ARENA-6: in a Duo / Trio match against bots each bot's team follows its place; Solo keeps the rival value.
         let duo_trio = arena && self.arena.size > 1;
-        let rivals: Vec<u64> = world.rival_bots().map(|b| b.handle).collect();
+        // ARENA-KF: in Duo / Trio a bot ally's kill is a fighter's kill too (allies stay on the game's ally team, outside `rival_bots`).
+        let mut rivals: Vec<u64> = world.rival_bots().map(|b| b.handle).collect();
+        if duo_trio {
+            rivals.extend(
+                self.kept
+                    .iter()
+                    .filter(|k| k.role.is_some_and(|r| r.ally))
+                    .map(|k| k.handle),
+            );
+        }
         let sectors = self.want.max(self.kept.len());
         let spread_on = self.spread && !arena;
         for (i, k) in self.kept.iter_mut().enumerate() {
@@ -827,8 +842,10 @@ impl BotFill {
                 k.dead = true;
                 let cause = death_cause(b.attacker, world.local_handle, &rivals);
                 k.death = Some((cause, now));
-                // ARENA-4: the Arena's round messages say who won; no killfeed line there.
-                if let Some(ev) = kill_event(k.handle, b.attacker, cause, world).filter(|_| !arena)
+                // ARENA-4: in a Solo Arena match the round message says who won (the bot's death ends the round): no killfeed
+                // line. ARENA-KF: Duo / Trio have several deaths a round, so they get the lines.
+                if let Some(ev) = kill_event(k.handle, b.attacker, cause, world)
+                    .filter(|_| arena_kill_line(arena, self.arena.size))
                 {
                     ctx.kills.push(ev);
                 }
@@ -1604,6 +1621,47 @@ mod tests {
         w2.bot_chrs.pop();
         *w = w2;
         d
+    }
+
+    /// ARENA-KF: in a Duo against bots a bot ally's kill of an enemy bot is a killfeed line (a Solo Arena match has none).
+    #[test]
+    fn a_duo_bot_allys_kill_gets_a_killfeed_line() {
+        use crate::features::killfeed::{short_id, KillKind};
+        use crate::game::world::bot_session_id;
+        assert!(arena_kill_line(false, 1), "outside the Arena");
+        assert!(
+            !arena_kill_line(true, 1),
+            "Arena Solo: the round message says it"
+        );
+        assert!(arena_kill_line(true, 2) && arena_kill_line(true, 3));
+        let mut w = World::default();
+        let mut d = arena_duo(&mut w);
+        w.local_handle = Some(0xF0);
+        // As the game holds them after the fill's writes: enemies on 6, the ally on the game's ally value.
+        for b in &mut w.bot_chrs {
+            b.team = if b.handle == 0xA2 {
+                2
+            } else {
+                ARENA_ENEMY_TEAM
+            };
+        }
+        d.step(3_000, GameMode::BattleRoyale, &w, &mut Ctx::default());
+        w.bot_chrs[0].hp = 0;
+        w.bot_chrs[0].attacker = 0xA2;
+        let mut ctx = Ctx::default();
+        d.step(3_050, GameMode::BattleRoyale, &w, &mut ctx);
+        assert_eq!(ctx.kills.len(), 1, "{:?}", ctx.kills);
+        let ev = ctx.kills[0];
+        assert_eq!(ev.kind, KillKind::Killed);
+        assert_eq!(ev.victim, short_id(bot_session_id(0xA0)));
+        assert_eq!(ev.killer, Some(short_id(bot_session_id(0xA2))));
+        // An enemy bot's kill of the ally is a line too.
+        w.bot_chrs[2].hp = 0;
+        w.bot_chrs[2].attacker = 0xA1;
+        let mut ctx = Ctx::default();
+        d.step(3_100, GameMode::BattleRoyale, &w, &mut ctx);
+        assert_eq!(ctx.kills.len(), 1, "{:?}", ctx.kills);
+        assert_eq!(ctx.kills[0].killer, Some(short_id(bot_session_id(0xA1))));
     }
 
     #[test]
