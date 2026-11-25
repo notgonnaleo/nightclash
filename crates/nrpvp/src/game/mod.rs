@@ -72,6 +72,7 @@ pub(crate) mod toastfilter;
 #[cfg(feature = "dev")]
 pub(crate) mod toasttrace;
 pub(crate) mod ultgauge;
+pub(crate) mod ultrawide;
 pub(crate) mod views;
 #[cfg(feature = "dev")]
 pub(crate) mod vpad;

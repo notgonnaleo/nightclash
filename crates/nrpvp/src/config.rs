@@ -223,6 +223,10 @@ private_code = \"\"
 team_spawns = false
 spawn_radius = 200.0
 
+# UW-1 ultrawide (both modes, on by default): no black bars on a screen that is not 16:9 (21:9, 32:9, 16:10). The game then draws
+# the full window; on a 16:9 screen nothing changes. false = the game's own 16:9 picture with bars. Log lines start with \"ultrawide:\".
+ultrawide = true
+
 # T-018: absolute directory for the logs (default = next to the DLL). Logs go to <log_dir>\\<DLL folder name>\\nrpvp.log
 # and ...\\logs\\. Use a TOML single-quoted string so backslashes stay literal. Nucleus deletes its Instance<N> folders
 # on close; point this somewhere permanent. Falls back to the DLL folder if unusable. Read before logging starts.
@@ -335,6 +339,8 @@ pub(crate) struct Config {
     pub team_spawns: bool,
     /// F3: metres from the drop point (clamped to `spawn::RADIUS_RANGE` in `parse`).
     pub spawn_radius: f32,
+    /// UW-1: no 16:9 letterbox (`game::ultrawide`).
+    pub ultrawide: bool,
     /// T-018: absolute log directory; empty = next to the DLL.
     pub log_dir: String,
     /// HAWK-2: the hawk crossing (`[hawk]`).
@@ -431,6 +437,7 @@ impl Default for Config {
             private_code: String::new(),
             team_spawns: false,
             spawn_radius: crate::game::spawn::DEFAULT_RADIUS,
+            ultrawide: true,
             log_dir: String::new(),
             hawk: HawkConfig::default(),
         }

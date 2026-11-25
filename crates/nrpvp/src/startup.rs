@@ -19,6 +19,10 @@ pub(crate) fn run() {
         if let Some(m) = banner(&setup) {
             // T-008 config (created with defaults if missing).
             let cfg = config::load(&dll_dir);
+            // UW-1 (on by default): first, so the game's first display apply (window creation) already draws the full window.
+            if cfg.ultrawide {
+                game::ultrawide::install(m.base);
+            }
             // MM-1: read/listen-only Steam probe, MM-2: the queue worker. One Steam thread serves both (one listener registration).
             // MM-4: the player build turns the queue on through `matchmaking` (config.rs forces every dev-only switch off there).
             let queue = cfg.mm_queue.then(|| {
