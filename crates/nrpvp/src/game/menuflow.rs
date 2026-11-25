@@ -188,9 +188,10 @@ pub(crate) const T_HELP_ON: usize = 9;
 pub(crate) const T_HELP_OFF: usize = 10;
 /// ARENA-1: Commence on the Arena card (Solo) starts the Arena search.
 pub(crate) const T_ARENA_SEARCHING: usize = 11;
-/// ARENA-1: the Arena card with Duo / Trio (ARENA-5).
-pub(crate) const T_ARENA_SOLO: usize = 12;
-const N_TEXTS: usize = 13;
+/// ARENA-5: Commence on the Arena card with Duo / Trio starts the Arena search for 2 vs 2 / 3 vs 3.
+pub(crate) const T_ARENA_DUO: usize = 12;
+pub(crate) const T_ARENA_TRIO: usize = 13;
+const N_TEXTS: usize = 14;
 const TEXT_UNITS: usize = 256;
 
 /// Requests from the handler to the thread.
@@ -202,6 +203,9 @@ pub(crate) const REQ_QUEUE_DUO: u8 = 3;
 pub(crate) const REQ_QUEUE_TRIO: u8 = 4;
 /// ARENA-1: an Arena queue, Solo (1v1).
 pub(crate) const REQ_QUEUE_ARENA_SOLO: u8 = 5;
+/// ARENA-5: an Arena queue, Duo (2v2) / Trio (3v3); a short party is filled with random players as in Battle Royale (MM-FILL).
+pub(crate) const REQ_QUEUE_ARENA_DUO: u8 = 6;
+pub(crate) const REQ_QUEUE_ARENA_TRIO: u8 = 7;
 
 /// What a Commence press does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -248,7 +252,7 @@ pub(crate) fn decide_for_card(
     decide(players, phase, mm_on, mode)
 }
 
-/// ARENA-1 (pure): a Commence on the Arena card with the queue idle starts the Arena search (Solo only for now); `None` = not the
+/// ARENA-1 (pure): a Commence on the Arena card with the queue idle starts the Arena search (ARENA-5: Solo, Duo or Trio); `None` = not the
 /// Arena card, not idle (Stop Searching and a found match go through [`decide_for_card`] as for Battle Royale) or Offline (the game's
 /// own solo expedition, as any other card). ARENA-4: with Bots On, Solo is a match against one bot at once (no search, no queue needed).
 pub(crate) fn decide_arena(
@@ -282,10 +286,15 @@ pub(crate) fn decide_arena(
             text: T_ARENA_SEARCHING,
             request: REQ_QUEUE_ARENA_SOLO,
         }
+    } else if players == PLAYERS_TWO {
+        Decision::Dialog {
+            text: T_ARENA_DUO,
+            request: REQ_QUEUE_ARENA_DUO,
+        }
     } else {
         Decision::Dialog {
-            text: T_ARENA_SOLO,
-            request: REQ_NONE,
+            text: T_ARENA_TRIO,
+            request: REQ_QUEUE_ARENA_TRIO,
         }
     })
 }
@@ -368,8 +377,12 @@ Choose Solo in Matchmaking Settings > Number of Players.".to_string(),
         "Arena: searching for an opponent (Solo, 1 vs 1).
 The match starts by itself in the Nightlord's arena.
 To stop, press Stop Searching.".to_string(),
-        "The Arena is Solo (1 vs 1) for now.
-Choose Solo in Matchmaking Settings > Number of Players.".to_string(),
+        "Arena: searching for players (Duo, 2 vs 2).
+Your party queues together; a missing teammate is found for you.
+To stop, press Stop Searching.".to_string(),
+        "Arena: searching for players (Trio, 3 vs 3).
+Your party queues together; missing teammates are found for you.
+To stop, press Stop Searching.".to_string(),
     ]
 }
 
@@ -841,10 +854,16 @@ fn run(base: usize) {
                     }
                 );
             }
-            REQ_QUEUE_ARENA_SOLO => {
-                let ok = crate::mm::send(crate::mm::Cmd::QueueArena(crate::mm::Mode::Solo));
+            r @ (REQ_QUEUE_ARENA_SOLO | REQ_QUEUE_ARENA_DUO | REQ_QUEUE_ARENA_TRIO) => {
+                let mode = match r {
+                    REQ_QUEUE_ARENA_DUO => crate::mm::Mode::Duo,
+                    REQ_QUEUE_ARENA_TRIO => crate::mm::Mode::Squad,
+                    _ => crate::mm::Mode::Solo,
+                };
+                let ok = crate::mm::send(crate::mm::Cmd::QueueArena(mode));
                 tracing::info!(
-                    "br_menu: Commence on the Arena card -> queue Arena Solo ({})",
+                    "br_menu: Commence on the Arena card -> queue Arena {} ({})",
+                    mode.label(),
                     if ok {
                         "sent"
                     } else {
@@ -1157,7 +1176,7 @@ mod tests {
     }
 
     #[test]
-    fn the_arena_card_starts_the_arena_search_solo_only() {
+    fn the_arena_card_starts_the_arena_search_solo_duo_or_trio() {
         use crate::mm::PHASE_IDLE;
         let bro = GameMode::BattleRoyale;
         assert_eq!(
@@ -1170,8 +1189,15 @@ mod tests {
         assert_eq!(
             decide_arena(Some(true), PLAYERS_TWO, PHASE_IDLE, true, bro, false),
             Some(Decision::Dialog {
-                text: T_ARENA_SOLO,
-                request: REQ_NONE
+                text: T_ARENA_DUO,
+                request: REQ_QUEUE_ARENA_DUO
+            })
+        );
+        assert_eq!(
+            decide_arena(Some(true), PLAYERS_THREE, PHASE_IDLE, true, bro, false),
+            Some(Decision::Dialog {
+                text: T_ARENA_TRIO,
+                request: REQ_QUEUE_ARENA_TRIO
             })
         );
         assert_eq!(

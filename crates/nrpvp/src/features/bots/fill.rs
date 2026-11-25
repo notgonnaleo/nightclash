@@ -1297,7 +1297,7 @@ mod tests {
         assert_eq!(puts(&ctx), vec![(0xA0, ARENA_BOT_SPAWN)]);
         assert_eq!(
             ARENA_BOT_SPAWN,
-            crate::game::arenacard::spawn_for(Some(1)).0
+            crate::game::arenacard::spawn_for(Some(1), 0).0
         );
     }
 

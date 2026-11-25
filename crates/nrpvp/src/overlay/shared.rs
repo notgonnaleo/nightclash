@@ -30,6 +30,8 @@ pub(crate) enum Command {
     PosWrite,
     /// MM-2 (dev only, `mm_queue`): queue for a match in this mode. The main loop only forwards it to the Steam worker thread.
     MmQueue(crate::mm::Mode),
+    /// ARENA-5 (dev only): queue for an Arena match in this mode (`mm_queue_arena_*`).
+    MmQueueArena(crate::mm::Mode),
     /// MM-2 (dev only): leave the queue / the ready match.
     MmLeave,
     /// MM-3 (dev only, `mm_join`): one join-method attempt (buttons (a) (b) (c) (d)).

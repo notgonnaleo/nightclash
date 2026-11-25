@@ -144,12 +144,18 @@ By hand: `nro launch --emulated 1`, `nro launch --emulated 2`, then any command 
 
 Requirements and limits:
 - Steam closed; `nro` run from a **normal terminal**, not an agent's sandboxed shell (it cannot open the game process, so the preflight fails).
-- About 7-10 GB of free RAM per game (two instances need roughly 20 GB; a third needs more than 32 GB total).
+- About 7-10 GB of free RAM per game (two instances need roughly 20 GB). Four ran on 32 GB (2026-11-24, `mi-arena-duo`) with the
+  settings of `scripts\four-instances.ps1 -Prepare` (closes Steam, Discord, WhatsApp; the shared `GraphicsConfig.xml`, also the real
+  game's, to WINDOW 960x540, every quality LOW, the original saved once) and the page file carrying the rest. Afterwards
+  `nro stop --all`, then `scripts\four-instances.ps1 -Restore` (puts the original back byte for byte).
+  Four-instance run, in order: `four-instances.ps1 -Prepare`, `nro desk` (normal terminal), `nro run scenarios\mi-arena-duo.toml`,
+  hands off the PC, `nro stop --all`, `four-instances.ps1 -Restore`.
+- Instance 4 (Steam id ...441) had no save: its first launch needed the new-game start played once by hand, up to the Roundtable.
 - The emulator files come from the Nucleus handler folder (`D:\Programs\Nucleus\handlers\ELDEN RING NIGHTREIGN`, or the folder in `NRO_EMU_SRC`).
   Nucleus itself is not used or needed running, but that folder must exist.
 - The Windows Firewall needs Allow-Private rules for the instance folders (once; MULTI-INSTANCE §16/§18).
 - One run at a time: two sessions on one PC abort each other (TRAPS).
-- Instances are `nightreign.exe` copies under `<drive>:\nro-instances\i1..i3`; `nro stop --all` ends all of them.
+- Instances are `nightreign.exe` copies under `<drive>:\nro-instances\i1..i4`; `nro stop --all` ends all of them.
 
 ### Example C: "do both screens see the dropped gear?" (the `mi-rw3-items` flow)
 ```text

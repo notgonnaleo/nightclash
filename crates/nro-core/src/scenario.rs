@@ -41,7 +41,7 @@ pub struct Scenario {
 /// The allowed values of `tags`.
 pub const TAGS: [&str; 6] = ["smoke", "rules", "hud", "mi", "slow", "lab"];
 
-/// One `[[instance]]`: emulated instance `n` (1..=3), launched in file order.
+/// One `[[instance]]`: emulated instance `n` (1..=4), launched in file order.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Instance {
@@ -231,13 +231,13 @@ impl Scenario {
         Ok(s)
     }
 
-    /// Instance numbers are 1..=3 and unique; roles are host/client/empty; a step's `instance` names a declared instance (and is
+    /// Instance numbers are 1..=4 and unique; roles are host/client/empty; a step's `instance` names a declared instance (and is
     /// only allowed when there are instances).
     fn check(&self) -> Result<(), String> {
         let mut seen = Vec::new();
         for i in &self.instances {
-            if !(1..=3).contains(&i.n) {
-                return Err(format!("scenario: instance n = {} (1..=3)", i.n));
+            if !(1..=4).contains(&i.n) {
+                return Err(format!("scenario: instance n = {} (1..=4)", i.n));
             }
             if seen.contains(&i.n) {
                 return Err(format!("scenario: instance {} declared twice", i.n));
@@ -447,7 +447,7 @@ navigate = "invite_members"
     fn refuses_bad_instances() {
         let bad = |from: &str, to: &str| Scenario::parse(&MULTI.replacen(from, to, 1)).unwrap_err();
         assert!(bad("n = 2", "n = 1").contains("twice"));
-        assert!(bad("n = 2", "n = 4").contains("1..=3"));
+        assert!(bad("n = 2", "n = 5").contains("1..=4"));
         assert!(bad("role = \"client\"", "role = \"boss\"").contains("role"));
         assert!(bad("instance = 2", "instance = 3").contains("not declared"));
         // `instance = N` without any [[instance]] table.
