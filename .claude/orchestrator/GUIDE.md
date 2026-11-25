@@ -149,7 +149,8 @@ Requirements and limits:
   game's, to WINDOW 960x540, every quality LOW, the original saved once) and the page file carrying the rest. Afterwards
   `nro stop --all`, then `scripts\four-instances.ps1 -Restore` (puts the original back byte for byte).
   Four-instance run, in order: `four-instances.ps1 -Prepare`, `nro desk` (normal terminal), `nro run scenarios\mi-arena-duo.toml`,
-  hands off the PC, `nro stop --all`, `four-instances.ps1 -Restore`.
+  hands off the PC, `nro stop --all`, `four-instances.ps1 -Restore`. To double-click instead: `scriptsour-instances-prepare.bat` /
+  `scriptsour-instances-restore.bat` (each runs the `.ps1` with its switch and waits for a key).
 - Instance 4 (Steam id ...441) had no save: its first launch needed the new-game start played once by hand, up to the Roundtable.
 - The emulator files come from the Nucleus handler folder (`D:\Programs\Nucleus\handlers\ELDEN RING NIGHTREIGN`, or the folder in `NRO_EMU_SRC`).
   Nucleus itself is not used or needed running, but that folder must exist.
