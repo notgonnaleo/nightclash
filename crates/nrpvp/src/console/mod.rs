@@ -122,7 +122,8 @@ const COMMANDS: &[Spec] = &[
     Spec { name: "padpoll", args: "", help: "RW-1 research: every virtual input bit of the game's own pad that is set now (hold a button, call it)", run: |_| Ok(Act::Reply(crate::game::menugate::describe())) },
     Spec { name: "menugate", args: "[0|1]", help: "RW-1 research: 1 = the Esc key asks the game to open the pause menu even while LOCAL is dead (sets CSMenuMan ctrl+0x179); 0 = left to the game (the night match does this by itself for a defeated player)", run: |a| { let on = match a.first().map(String::as_str) { Some("0") => false, Some("1") | None => true, Some(_) => return Err("expected 0 or 1".into()) }; crate::game::menugate::set_active(on); Ok(Act::Reply(format!("menugate {}", u8::from(on)))) } },
     Spec { name: "maphide", args: "[0|1|auto]", help: "RW-9: 1 = empty the map / compass list of other players now, 0 = show them, auto (default) = hidden while a Solo match runs (PvP on, team size 1) and the rivalhud map hook is missing; no argument shows the state", run: maphide },
-    Spec { name: "rivalhud", args: "[0|1|auto]", help: "RW-9: rivals off the map, compass, party bars and name tags (the lock-on target too: the game's enemy bar shows its name); 1 = force on, 0 = force off, auto (default) = while a match runs; no argument shows the state and the per-site counters", run: rivalhud },
+    Spec { name: "ultrawide", args: "[0|1]", help: "UW-1: 1 = no 16:9 black bars (the game draws the whole window), 0 = vanilla letterbox; the game uses it the next time the display settings are applied (change the window mode or resolution in its menu); no argument shows the patch bytes", run: ultrawide },
+    Spec { name: "rivalhud",args: "[0|1|auto]", help: "RW-9: rivals off the map, compass, party bars and name tags (the lock-on target too: the game's enemy bar shows its name); 1 = force on, 0 = force off, auto (default) = while a match runs; no argument shows the state and the per-site counters", run: rivalhud },
     Spec { name: "runeshare", args: "[0|1|auto]", help: "RW-8: kill runes from a rival's kill are not credited (death-credit hook); 1 = force on, 0 = force off (vanilla share), auto (default) = while a match runs; no argument shows the state, LOCAL's runes since `runes_mark` and the counters", run: runeshare },
     Spec { name: "runes_mark", args: "", help: "RW-8 test aid: remember LOCAL's rune count now; `runeshare` then shows the change since", run: |_| Ok(Act::Reply(crate::game::runeshare::mark())) },
     Spec { name: "mobs", args: "", help: "RW-8 test aid: the nearest living enemies loaded on this game (handle, npc id, HP, distance)", run: |_| crate::game::teleport::mobs_cmd().map(Act::Reply) },
@@ -740,6 +741,17 @@ fn switch_arg(args: &[String], usage: &str) -> Result<Option<bool>, String> {
         Some("1") if args.len() == 1 => Ok(Some(true)),
         _ => Err(usage.into()),
     }
+}
+
+/// UW-1: `ultrawide [0|1]` (a one-byte code write, safe from the pipe thread).
+fn ultrawide(args: &[String]) -> Result<Act, String> {
+    use crate::game::ultrawide;
+    let on = switch_arg(args, "usage: ultrawide [0|1]")?;
+    let base = crate::game::puppet::exe_base()?;
+    Ok(Act::Reply(match on {
+        None => ultrawide::describe(base),
+        Some(on) => ultrawide::set(base, on),
+    }))
 }
 
 /// RW-9: `rivalhud [0|1|auto]`.
@@ -1416,6 +1428,14 @@ mod tests {
         ));
         assert!(bots_fill(&["9".into()]).is_err());
         assert!(execute_line("bots_list").starts_with("bots: "));
+    }
+
+    #[test]
+    fn ultrawide_parses_its_switch() {
+        // Bad arguments never touch memory; the read-only form answers on the pipe thread (the test exe has other bytes there).
+        assert!(ultrawide(&["2".into()]).is_err());
+        assert!(ultrawide(&["1".into(), "1".into()]).is_err());
+        assert!(execute_line("ultrawide").starts_with("ultrawide: "));
     }
 
     #[test]

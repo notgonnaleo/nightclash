@@ -291,3 +291,7 @@ Replaces "built first as a sideline seat" of "Arena Duo / Trio rules" above (TAS
   allies vs three), offline as the Solo bot match (chosen over "LOCAL alone against a bot team"; friends + bots stays impossible,
   BOT-0). Agent's rules: allies keep the game's ally team 2, enemy bots get 6 so they do not fight each other (29 makes every bot a
   rival of every other); a bot is beaten at 0 HP and replaced at the reset, as in Solo.
+- **Ultrawide (UW-1) is on by default in every mode** (Leonardo, 2026-11-25, after the in-game PASS; testing-log 2026-11-25
+  "Ultrawide"): no 16:9 bars on a wider screen, nothing changes on a 16:9 one. A wider screen sees more to the sides, which Elden Ring
+  PvP accepts, so no 21:9 cap and no Arena exception. `ultrawide = false` in `nrpvp.toml` stays as the off switch; no launcher checkbox.
+  Our own one-byte patch, not the community DLLs (one has no licence, the other no source; both need their own loader).
