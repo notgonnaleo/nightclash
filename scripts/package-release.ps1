@@ -105,6 +105,8 @@ $toml = @(
     '# Private match: everyone who writes the same code here (letters, digits, - and _) meets only each other. Empty = public.',
     'private_code = ""',
     'team_candidates = [29, 6, 3, 16, 13, 2, 1]',
+    '# Ultrawide: no black bars on a screen wider than 16:9 (nothing changes on a 16:9 screen). false = the game''s own 16:9 picture.',
+    'ultrawide = true',
     '',
     '# Hawk crossing: the start hawk flies one line across the map. Hold the stick to dive, then steer; leave the hawk with the',
     '# Spectral Hawk Tree buttons (hold action, or L3). Keep this table last.',
