@@ -159,6 +159,15 @@ pub(crate) fn spawn_for(team: Option<u8>, slot: u8) -> ([f32; 3], f32) {
     ([x, y, z + slot_z(slot)], yaw)
 }
 
+/// ARENA-SPAWN: LOCAL's spawn now (its roster team and slot, as [`place`] uses them).
+pub(crate) fn local_spawn() -> [f32; 3] {
+    spawn_for(
+        crate::mm::local_roster_team(),
+        crate::mm::local_roster_slot().unwrap_or(0),
+    )
+    .0
+}
+
 /// ARENA-5: the bench of a roster team (pure): on the line of its spawn, [`BENCH_X_M`] from the centre, same facing.
 pub(crate) fn bench_for(team: Option<u8>, slot: u8) -> ([f32; 3], f32) {
     let ([x, y, z], yaw) = spawn_for(team, slot);

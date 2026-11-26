@@ -57,6 +57,16 @@ pub(crate) const ARENA_PARK: [f32; 3] = [0.0, 3.0, 120.0];
 pub(crate) const ARENA_PARK_ALLY: [f32; 3] = [0.0, 3.0, -120.0];
 /// ARENA-4: a bot this close (horizontal metres) to its spawn stands on it.
 const ON_SPAWN_M: f32 = 8.0;
+/// ARENA-SPAWN: behind the black screen a bot farther than this (horizontal metres) from its spawn is put back on it.
+const HOLD_OFF_M: f32 = 4.0;
+/// ARENA-SPAWN: at most one put per bot per this long (a position read right after a put may still be the old one).
+const HOLD_PUT_EVERY_MS: u64 = 1_000;
+
+/// ARENA-SPAWN: whether a held bot is put back on its spawn now (pure): more than [`HOLD_OFF_M`] off it, and its last put at least
+/// [`HOLD_PUT_EVERY_MS`] ago.
+fn hold_put_due(off_m: Option<f32>, since_put_ms: Option<u64>) -> bool {
+    off_m.is_some_and(|m| m > HOLD_OFF_M) && since_put_ms.is_none_or(|ms| ms >= HOLD_PUT_EVERY_MS)
+}
 /// ARENA-6: the team value of a bot ally: the game's own ally value (a bot spawns on it, `World::rival_bots`; LOCAL is on it in an
 /// expedition), so it fights for LOCAL and never hits it (team relation (2, 2) = Friend, MEMORY_MAP §4 / §10).
 pub(crate) const ARENA_ALLY_TEAM: u8 = 2;
@@ -140,6 +150,8 @@ pub(crate) struct BotEvents {
     pub resets: u32,
     /// A match was decided (at the last round's reset, before WIN / LOSE).
     pub decided: u32,
+    /// ARENA-SPAWN: a round started (its fade-in): the bots are no longer held on their spawns.
+    pub round_starts: u32,
 }
 
 const EMPTY: u64 = u64::MAX;
@@ -251,6 +263,8 @@ pub(crate) struct Kept {
     pub role: Option<Role>,
     /// ARENA-4: it has stood on its spawn since the last round end.
     pub arena_ready: bool,
+    /// ARENA-SPAWN: when it was last put on its spawn (ms).
+    last_put: Option<u64>,
 }
 
 impl Kept {
@@ -271,6 +285,7 @@ impl Kept {
             full_hp: 0,
             role: None,
             arena_ready: false,
+            last_put: None,
         }
     }
 }
@@ -311,6 +326,9 @@ pub(crate) struct BotFill {
     arena_seen: Option<BotEvents>,
     /// ARENA-4: the match is decided: no more bots.
     arena_done: bool,
+    /// ARENA-SPAWN: the screen is black with the players on their spawns (before round 1, and from a reset to the next fade-in): the
+    /// bots are held on their spawns too.
+    arena_hold: bool,
 }
 
 impl BotFill {
@@ -334,6 +352,7 @@ impl BotFill {
             arena: ArenaIn::default(),
             arena_seen: None,
             arena_done: false,
+            arena_hold: true,
         }
     }
 
@@ -471,7 +490,7 @@ impl BotFill {
         self.me = world.local_pos.map(|(p, _)| p);
         self.keep_rivals(now, world, ctx);
         if arena {
-            self.arena_step(world, ctx);
+            self.arena_step(now, world, ctx);
         } else {
             self.respawn_due(now);
             self.give_up_replacements(now);
@@ -573,14 +592,22 @@ impl BotFill {
 
     /// ARENA-4 / ARENA-6: the Arena's bots follow the rounds (`arenarounds` events): parked at a round end (allies and enemies on
     /// opposite sides); at the reset healed and put back on their spawns, or replaced when dead; put at 0 HP when the match is decided.
-    /// A new bot is put on the spawn of its place once. A replaced bot that comes back to life is put at 0 HP again.
-    fn arena_step(&mut self, world: &World, ctx: &mut Ctx) {
+    /// A new bot is put on the spawn of its place once. A replaced bot that comes back to life is put at 0 HP again. ARENA-SPAWN: while
+    /// the screen is black before a round, a bot off its spawn is put back (a move the game undid, or a bot walking off).
+    fn arena_step(&mut self, now: u64, world: &World, ctx: &mut Ctx) {
         let ev = self.arena.events;
         let seen = *self.arena_seen.get_or_insert(ev);
         self.arena_seen = Some(ev);
         let round_end = ev.round_ends != seen.round_ends;
         let reset = ev.resets != seen.resets && !self.arena_done;
         let decided = ev.decided != seen.decided;
+        // Held from a reset to the next fade-in; free from the fade-in; parked (not held) from a round end to the reset.
+        if ev.round_starts != seen.round_starts || round_end {
+            self.arena_hold = false;
+        }
+        if reset {
+            self.arena_hold = true;
+        }
         let live = |k: &Kept| {
             world
                 .bot(k.handle)
@@ -625,6 +652,7 @@ impl BotFill {
                         handle: b.handle,
                         to: role_spawn(role),
                     });
+                    k.last_put = Some(now);
                 } else {
                     k.replaced = true;
                     lost += 1;
@@ -659,6 +687,7 @@ impl BotFill {
                 if let Some(role) = k.role {
                     // A new bot: on its spawn once (the game brings it next to LOCAL).
                     k.spread = true;
+                    k.last_put = Some(now);
                     ctx.bot_writes.push(BotWrite::Put {
                         chr: b.chr,
                         handle: k.handle,
@@ -693,6 +722,36 @@ impl BotFill {
                         if role.ally { "ally" } else { "enemy" },
                         role.slot
                     );
+                }
+            }
+        }
+        // ARENA-SPAWN: behind the black screen every bot stays on its spawn. A put is one write of the physics position; the game can
+        // put the old position back (v0.4.3, 2026-11-26: an ally's reset move did not hold, it spent round 2 at its park and the round
+        // start waited for it), and the bots are not frozen like the players, so they walk off and fight behind the black screen.
+        if self.arena_hold && !round_end && !self.arena_done {
+            for k in self.kept.iter_mut().filter(|k| !k.replaced && k.spread) {
+                let Some(role) = k.role else {
+                    continue;
+                };
+                let Some(b) = live(k) else {
+                    continue;
+                };
+                let spawn = role_spawn(role);
+                let off = b
+                    .pos
+                    .map(|p| ((p[0] - spawn[0]).powi(2) + (p[2] - spawn[2]).powi(2)).sqrt());
+                if hold_put_due(off, k.last_put.map(|t| now.saturating_sub(t))) {
+                    tracing::info!(
+                        "bots: Arena bot 0x{:X} is {:.1} m off its spawn behind the black screen; put back",
+                        k.handle,
+                        off.unwrap_or(0.0)
+                    );
+                    k.last_put = Some(now);
+                    ctx.bot_writes.push(BotWrite::Put {
+                        chr: b.chr,
+                        handle: k.handle,
+                        to: spawn,
+                    });
                 }
             }
         }
@@ -944,6 +1003,7 @@ impl BotFill {
     fn reset(&mut self) {
         self.arena_seen = None;
         self.arena_done = false;
+        self.arena_hold = true;
         self.over = true;
         self.waiting_since = None;
         self.want = self.cfg_want;
@@ -1339,6 +1399,7 @@ mod tests {
                 round_ends,
                 resets,
                 decided,
+                round_starts: 0,
             },
         }
     }
@@ -1480,6 +1541,92 @@ mod tests {
         w.bot_chrs[0].pos = Some([15.0, 3.0, 0.0]);
         d.step(8_050, GameMode::BattleRoyale, &w, &mut Ctx::default());
         assert!(d.arena_bot().unwrap().ready);
+    }
+
+    /// ARENA-SPAWN (v0.4.3, 2026-11-26): the reset put of a bot did not hold (it stayed at its park); behind the black screen it is put
+    /// again every [`HOLD_PUT_EVERY_MS`] until it stands on its spawn, never while parked, and no more once the round has started.
+    #[test]
+    fn a_bot_whose_reset_put_did_not_hold_is_put_again_until_the_fade_in() {
+        let mut w = World::default();
+        let mut d = arena_with_bot(&mut w);
+        w.bot_chrs[0].pos = Some([15.0, 3.0, 0.0]);
+        d.step(2_000, GameMode::BattleRoyale, &w, &mut Ctx::default());
+        // Round 1 starts; the bot walks off: free.
+        let start1 = BotEvents {
+            round_starts: 1,
+            ..arena_in(0, 0, 0).events
+        };
+        d.set_arena(ArenaIn {
+            events: start1,
+            ..arena_in(0, 0, 0)
+        });
+        w.bot_chrs[0].pos = Some([0.0, 3.0, 0.0]);
+        let mut ctx = Ctx::default();
+        d.step(3_000, GameMode::BattleRoyale, &w, &mut ctx);
+        assert!(puts(&ctx).is_empty(), "fighting: not held");
+        // The round end parks it; parked is not held.
+        let ended = BotEvents {
+            round_ends: 1,
+            ..start1
+        };
+        d.set_arena(ArenaIn {
+            events: ended,
+            ..arena_in(0, 0, 0)
+        });
+        let mut ctx = Ctx::default();
+        d.step(4_000, GameMode::BattleRoyale, &w, &mut ctx);
+        assert_eq!(puts(&ctx), vec![(0xA0, ARENA_PARK)]);
+        w.bot_chrs[0].pos = Some(ARENA_PARK);
+        let mut ctx = Ctx::default();
+        d.step(6_000, GameMode::BattleRoyale, &w, &mut ctx);
+        assert!(puts(&ctx).is_empty(), "parked: not held");
+        // The reset puts it on its spawn; the game undoes the move (it is still at the park).
+        let reset = BotEvents { resets: 1, ..ended };
+        d.set_arena(ArenaIn {
+            events: reset,
+            ..arena_in(0, 0, 0)
+        });
+        let mut ctx = Ctx::default();
+        d.step(8_000, GameMode::BattleRoyale, &w, &mut ctx);
+        assert_eq!(puts(&ctx), vec![(0xA0, ARENA_BOT_SPAWN)]);
+        let mut ctx = Ctx::default();
+        d.step(8_500, GameMode::BattleRoyale, &w, &mut ctx);
+        assert!(puts(&ctx).is_empty(), "a second at most once");
+        assert!(!d.arena_bot().unwrap().ready);
+        let mut ctx = Ctx::default();
+        d.step(9_000, GameMode::BattleRoyale, &w, &mut ctx);
+        assert_eq!(puts(&ctx), vec![(0xA0, ARENA_BOT_SPAWN)], "put again");
+        // This one holds: ready, and no more puts while it stays.
+        w.bot_chrs[0].pos = Some([15.5, 3.0, 1.0]);
+        let mut ctx = Ctx::default();
+        d.step(10_500, GameMode::BattleRoyale, &w, &mut ctx);
+        assert!(puts(&ctx).is_empty());
+        assert!(d.arena_bot().unwrap().ready);
+        // It walks off behind the black screen: back on its spawn.
+        w.bot_chrs[0].pos = Some([5.0, 3.0, 0.0]);
+        let mut ctx = Ctx::default();
+        d.step(11_000, GameMode::BattleRoyale, &w, &mut ctx);
+        assert_eq!(puts(&ctx), vec![(0xA0, ARENA_BOT_SPAWN)]);
+        // Round 2 starts: free again.
+        d.set_arena(ArenaIn {
+            events: BotEvents {
+                round_starts: 2,
+                ..reset
+            },
+            ..arena_in(0, 0, 0)
+        });
+        let mut ctx = Ctx::default();
+        d.step(13_000, GameMode::BattleRoyale, &w, &mut ctx);
+        assert!(puts(&ctx).is_empty(), "fighting: not held");
+    }
+
+    #[test]
+    fn a_held_bot_is_put_back_only_when_off_its_spawn_and_at_most_once_a_second() {
+        assert!(!hold_put_due(None, None), "no position: nothing");
+        assert!(!hold_put_due(Some(HOLD_OFF_M), None));
+        assert!(hold_put_due(Some(HOLD_OFF_M + 0.1), None));
+        assert!(!hold_put_due(Some(30.0), Some(HOLD_PUT_EVERY_MS - 1)));
+        assert!(hold_put_due(Some(30.0), Some(HOLD_PUT_EVERY_MS)));
     }
 
     #[test]

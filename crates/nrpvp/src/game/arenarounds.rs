@@ -76,8 +76,19 @@ pub(crate) const RESET_AFTER_MS: u64 = 5_000;
 pub(crate) const FADE_IN_MS: u64 = 6_000;
 /// ARENA-HP1: a player at this HP or less has lost the round (immortality stops a hit at 1 HP).
 pub(crate) const BEATEN_HP: u32 = 1;
-/// ARENA-4: a round start waits at most this long for the bot on its spawn (then goes on without it).
+/// ARENA-4: round 1 waits at most this long for the bots on their spawns (then goes on without them): they are asked for only once
+/// LOCAL stands on its spawn after the warp's map load, so the first fill can be slow.
 pub(crate) const RIVAL_WAIT_MS: u64 = 30_000;
+/// ARENA-SPAWN: the rounds after a reset wait at most this long past [`FADE_IN_MS`] for the bots on their spawns. The bots are already
+/// in the arena (only dead ones are replaced, ~1.5 s), and the bots feature puts a bot off its spawn back every second, so a longer
+/// wait only keeps the player blind (v0.4.3, 2026-11-26: an ally's reset move was undone by the game, the fade-in waited the old 30 s
+/// while the enemy bots hit the frozen player).
+pub(crate) const RESET_RIVAL_WAIT_MS: u64 = 5_000;
+/// ARENA-SPAWN: behind the black screen LOCAL is moved to its spawn again when it stands farther than this (horizontal metres) from
+/// it: a written move the game undid.
+const LOCAL_OFF_SPAWN_M: f32 = 3.0;
+/// ARENA-SPAWN: at most one such retry per this long (a position read right after a move may still be the old one).
+const LOCAL_REPLACE_EVERY_MS: u64 = 1_000;
 /// The screen comes back only once LOCAL's move to its spawn is written, waiting at most this long past [`FADE_IN_MS`]. A player
 /// frozen mid-attack at the round end has a tilted rotation: the move is refused until it is forced after [`PLACE_FORCE_AFTER_MS`],
 /// which is also the gap from the reset to the fade-in, so the forced move landed 0.1-0.3 s into the next round (2v2 of 2026-11-25:
@@ -652,7 +663,7 @@ impl Rounds {
                     out.push(Do::Reset);
                 }
                 let rival_wait =
-                    !self.decided() && timer.rival_missing && t < FADE_IN_MS + RIVAL_WAIT_MS;
+                    !self.decided() && timer.rival_missing && t < FADE_IN_MS + RESET_RIVAL_WAIT_MS;
                 let place_wait = timer.unplaced && t < FADE_IN_MS + PLACE_WAIT_MS;
                 if stage == 2 && t >= FADE_IN_MS && !rival_wait && !place_wait {
                     if self.decided() {
@@ -740,6 +751,7 @@ static BOT_EVENTS: Mutex<BotEvents> = Mutex::new(BotEvents {
     round_ends: 0,
     resets: 0,
     decided: 0,
+    round_starts: 0,
 });
 
 /// ARENA-4 / ARENA-6 (bots feature, every tick): the bots the Arena match has (allies and enemies), and whether all stand on their
@@ -866,6 +878,23 @@ fn hp_fraction(player: usize) -> Option<f32> {
 /// When the last get-up write was made, and since when a reset move is waiting (main loop only).
 static LAST_REVIVE: Mutex<Option<Instant>> = Mutex::new(None);
 static PLACE_SINCE: Mutex<Option<Instant>> = Mutex::new(None);
+/// ARENA-SPAWN: when LOCAL's last move to its spawn was written or retried (main loop only).
+static LAST_PLACE: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// ARENA-SPAWN: whether LOCAL, behind the black screen with no move pending, is moved to its spawn again (pure): it stands more than
+/// [`LOCAL_OFF_SPAWN_M`] off it, and the last move was at least [`LOCAL_REPLACE_EVERY_MS`] ago.
+pub(crate) fn local_replace_due(off_m: Option<f32>, since_last_ms: Option<u64>) -> bool {
+    off_m.is_some_and(|m| m > LOCAL_OFF_SPAWN_M)
+        && since_last_ms.is_none_or(|ms| ms >= LOCAL_REPLACE_EVERY_MS)
+}
+
+/// ARENA-SPAWN: the phases with the screen black and LOCAL on its spawn: before round 1, and from the reset to the next fade-in.
+fn behind_black_on_spawn(phase: Phase) -> bool {
+    matches!(
+        phase,
+        Phase::Starting { .. } | Phase::RoundOver { stage: 2, .. }
+    )
+}
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -1198,7 +1227,11 @@ pub(crate) fn tick(base: usize, world: &World) {
                 crate::game::gametoast::show(&m);
             }
             Do::FadeOut => set_flag(base, FLAG_FADE_OUT),
-            Do::FadeIn => set_flag(base, FLAG_FADE_IN),
+            Do::FadeIn => {
+                // A round starts: the bots feature stops holding the bots on their spawns.
+                lock(&BOT_EVENTS).round_starts += 1;
+                set_flag(base, FLAG_FADE_IN);
+            }
             Do::FadeInFrozen => set_flag(base, FLAG_FADE_IN_FROZEN),
             Do::Spectate => {
                 // Frozen with the screen on (the match-end fade, from a visible screen: it stays visible), to the far bench first; the
@@ -1316,6 +1349,27 @@ pub(crate) fn tick(base: usize, world: &World) {
         let force = t.elapsed().as_millis() as u64 >= PLACE_FORCE_AFTER_MS;
         if super::arenacard::place(base, force) || force {
             *pending = None;
+            *lock(&LAST_PLACE) = Some(Instant::now());
+        }
+    }
+    // ARENA-SPAWN: a move the game undid (the write lands, the next physics step puts the old position back; seen for a bot, v0.4.3
+    // 2026-11-26): behind the black screen LOCAL is checked against its spawn and moved again.
+    if before == (Phase::Off) && matches!(rounds.phase, Phase::Starting { .. }) {
+        // `arenacard` has just written the arrival move.
+        *lock(&LAST_PLACE) = Some(Instant::now());
+    }
+    if on && pending.is_none() && !watching && behind_black_on_spawn(rounds.phase) {
+        let spawn = super::arenacard::local_spawn();
+        let off = crate::game::teleport::local_world_pos()
+            .map(|p| ((p[0] - spawn[0]).powi(2) + (p[2] - spawn[2]).powi(2)).sqrt());
+        let mut last = lock(&LAST_PLACE);
+        if local_replace_due(off, last.map(|t| t.elapsed().as_millis() as u64)) {
+            *last = Some(Instant::now());
+            *pending = Some(Instant::now());
+            tracing::warn!(
+                "arena_rounds: LOCAL is {:.1} m off its spawn behind the black screen (the move did not hold); moving it again",
+                off.unwrap_or(0.0)
+            );
         }
     }
     drop(pending);
@@ -1816,6 +1870,56 @@ mod tests {
             r.step_timed(t + 6_000, true, UP, None, missing(true)),
             vec![Do::FadeInFrozen, Do::Win]
         );
+    }
+
+    /// ARENA-SPAWN (v0.4.3, 2026-11-26): after a reset a bot that never stands on its spawn keeps the screen black only
+    /// [`RESET_RIVAL_WAIT_MS`] past [`FADE_IN_MS`], not the 30 s of round 1 (the player was frozen in the dark while the bots fought).
+    #[test]
+    fn after_a_reset_a_missing_bot_keeps_the_screen_black_only_a_few_seconds() {
+        let mut r = Rounds::default();
+        let t = start(&mut r);
+        r.step_timed(t, true, UP, Some(DOWN), missing(false));
+        r.step_timed(t + 1_000, true, UP, Some(DOWN), missing(false));
+        r.step_timed(t + 5_000, true, UP, Some(DOWN), missing(false));
+        let end = t + FADE_IN_MS + RESET_RIVAL_WAIT_MS;
+        assert!(r
+            .step_timed(end - 1, true, UP, Some(UP), missing(true))
+            .is_empty());
+        assert_eq!(
+            r.step_timed(end, true, UP, Some(UP), missing(true)),
+            vec![Do::FadeIn, Do::Message("Round 2: fight!".into())]
+        );
+        const { assert!(RESET_RIVAL_WAIT_MS < RIVAL_WAIT_MS) };
+    }
+
+    #[test]
+    fn local_is_moved_again_only_when_off_its_spawn_and_at_most_once_a_second() {
+        assert!(!local_replace_due(None, None), "no position: nothing");
+        assert!(!local_replace_due(Some(LOCAL_OFF_SPAWN_M), None));
+        assert!(local_replace_due(Some(87.9), None));
+        assert!(!local_replace_due(
+            Some(87.9),
+            Some(LOCAL_REPLACE_EVERY_MS - 1)
+        ));
+        assert!(local_replace_due(Some(87.9), Some(LOCAL_REPLACE_EVERY_MS)));
+        assert!(behind_black_on_spawn(Phase::Starting { at_ms: 0 }));
+        assert!(behind_black_on_spawn(Phase::RoundOver {
+            lost: false,
+            at_ms: 0,
+            stage: 2
+        }));
+        for p in [
+            Phase::Off,
+            Phase::Fighting { armed: true },
+            Phase::RoundOver {
+                lost: true,
+                at_ms: 0,
+                stage: 1,
+            },
+            Phase::MatchOver,
+        ] {
+            assert!(!behind_black_on_spawn(p), "{p:?}");
+        }
     }
 
     const OT_MSG: &str = "Overtime! HP drains until someone falls";
