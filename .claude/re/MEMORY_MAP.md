@@ -685,3 +685,21 @@ Update 2026-11-13: presets are now character-independent per the user's revised 
 metadata or requests a character change. ESD slot summaries use Saved/Empty and contain no GetChrHero or character-menu call.
 Flags 10007833 and 10007840..10007999 are reserved legacy space. Existing file version 1 presets accept and discard their old
 hero field; newly written presets contain equipment only. Loading keeps the current Nightfarer selected.
+
+## 30. Render size and the 16:9 letterbox (UW-1, 2026-11-25, exe 1.3.3.0)
+
+`[VERIFIED: static disassembly of the installed exe 1.3.3.0, 2026-11-25; the patch's effect live: one game, borderless on a 2.39:1
+monitor, full-width picture without a resolution change, HUD in the centred 16:9 area, testing-log 2026-11-25 "Ultrawide"]`
+
+When the display settings are applied, code at `exe+0x1B8B241..0x1B8B2FF` (inside obfuscated jump chains) turns the window size into
+the render size. With `rbx` the display object, `r12 + [rbx+0x138] * 0x38` indexes a settings record: window width at `+0x498`
+(`(idx+0x15)*0x38`), height at `+0x49C`, and an aspect pair at `+0x4B0` : `+0x4B4` (16 : 9 in vanilla, HYPOTHESIS from the arithmetic).
+- If either number of the pair is 0 (`je` at `+0x1B8B279` and `+0x1B8B286`), the render size is the window size: `[rbx+0x110]` = width,
+  `[rbx+0x114]` = height.
+- Otherwise it compares `height*num` with `width*den` and shrinks one side to keep the ratio: the black bars.
+- **UW-1 patch:** `exe+0x1B8B286` `74 66` → `EB 66`, so the full-size branch is always taken (`game/ultrawide.rs`). Same byte as the
+  community "nightreign-ultrawidefix" (fork of techiew's MIT UltrawideFix; its AOB `85 C0 74 73 46 8B 84 21 B4 04 00 00 45 85 C0 74`
+  still matches once, at `+0x1B8B277`).
+- The apply function is `exe+0x1B8CA40` (called from `+0x1B84331`); it returns at once unless the byte `[this+0x1028]` ("settings
+  changed") is set, and clears it. huutaiii's `UnlockAspectRatio.dll` 1.0.0 (in the Nucleus handler; no public source) finds this call
+  with `E8 ???????? 48 8B 9E C8010000 33 FF 48 3B 9E D0010000 0F84` and hooks it (pattern still matches once on 1.03.3).

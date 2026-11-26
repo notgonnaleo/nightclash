@@ -150,6 +150,17 @@ fn set_status(request: Option<String>, manager: Option<String>) {
 /// BOT-1: the roster text for the console (`bots_list`; written by the main loop every tick, read by the pipe thread).
 static ROSTER: Mutex<String> = Mutex::new(String::new());
 
+/// ARENA-KF: the handles of the bot allies of an Arena Duo / Trio match against bots (empty otherwise; main loop, every tick).
+static ARENA_ALLIES: Mutex<Vec<u64>> = Mutex::new(Vec::new());
+
+/// ARENA-KF: LOCAL's bot allies this tick (the killfeed names them and colours them as LOCAL's team).
+pub(crate) fn arena_allies() -> Vec<u64> {
+    ARENA_ALLIES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
+}
+
 /// `bots_list` (console): the fill director's roster.
 pub(crate) fn roster_line() -> String {
     let s = ROSTER.lock().unwrap_or_else(PoisonError::into_inner);
@@ -299,10 +310,13 @@ impl Feature for BotsFeature {
             events: crate::game::arenarounds::bot_events(),
         });
         self.fill.step(now, super::mode::current(), world, ctx);
-        crate::game::arenarounds::set_arena_bots(
-            self.fill.arena_bots(),
-            self.fill.arena_all_ready(),
-        );
+        let arena_bots = self.fill.arena_bots();
+        *ARENA_ALLIES.lock().unwrap_or_else(PoisonError::into_inner) = arena_bots
+            .iter()
+            .filter(|b| b.ally)
+            .map(|b| b.handle)
+            .collect();
+        crate::game::arenarounds::set_arena_bots(arena_bots, self.fill.arena_all_ready());
         PENDING.store(self.fill.pending(), std::sync::atomic::Ordering::Relaxed);
         if self.fill.take_over() {
             set_bots_match(false);
